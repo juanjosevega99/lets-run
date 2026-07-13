@@ -1,0 +1,11 @@
+name,date,distance_km,official_time,terrain,elevation_gain_m,results_url,notes
+# Fill one row per race you have a RELIABLE official time for. This is the backtest set (T0).
+# Lines starting with # are ignored. Delete these examples once you've added your own.
+# - date: YYYY-MM-DD
+# - distance_km: the official distance (21.0975 for a half, 42.195 for a marathon, 10 for a 10K)
+# - official_time: H:MM:SS or MM:SS  (e.g. 1:52:40 or 45:30)
+# - terrain: road | trail | track
+# - elevation_gain_m: leave blank if you don't know it (fine for flat road races)
+# - results_url / notes: optional, but a link makes the time auditable later
+Maraton de Santiago 21K,2023-04-02,21.0975,1:48:30,road,120,https://example.com/results,PR at the time
+Cerro San Cristobal Trail,2022-11-13,12,1:14:05,trail,540,,felt strong on the climb

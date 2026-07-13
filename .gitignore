@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+# Personal data — never commit. The committed template is races.template.csv.
+data/
+races.csv
