@@ -29,6 +29,16 @@ If the design gets complicated "in case someone else uses it," that's scope cree
 
 Race prediction is known, deterministic math. The LLM interprets, plans, and explains — and **calls** those functions as tools.
 
+```mermaid
+flowchart LR
+    A["your runs<br/><i>Strava history</i>"]
+    B["the math — deterministic<br/><i>fitness + race prediction</i><br/>hand-written · F1"]
+    C["the coach — LLM<br/><i>weekly plan + explanation</i><br/>F3"]
+    D["race day<br/><i>April 2027 · Patagonia 21K</i>"]
+    A --> B --> C --> D
+    C -. "asks the math, never invents a number" .-> B
+```
+
 | Layer | Owner | Why |
 |---|---|---|
 | Race time prediction | Deterministic code | An LLM invents numbers with a confident tone |
@@ -89,6 +99,14 @@ Hand-written. This is the **AI-free zone** (see §9).
 
   The hierarchy is code, not vibes — silent holes in the load curve are worse than crude
   estimates, because they're invisible.
+
+  **Two uses of history (F1 design — noted here so it isn't lost).** Recent load drives
+  *current* fitness: CTL's ~42-day time constant means training older than a few months has
+  already decayed out of today's form, so a past peak (e.g. 2021–22) does **not** inflate the
+  April prediction. The *full* history — especially peak-year *races* — is instead the signal
+  for calibrating personal constants (Riegel exponent, VDOT→pace, hill cost) and for
+  backtesting. Implication for ingestion: keep all history, never truncate. How wide each
+  window is stays an F1 decision.
 
 **Gym:** Strava logs it as a generic activity with no useful metrics. Model it as *non-specific load* (hierarchy level 3): it affects fatigue (ATL), it does not add running fitness (running CTL). Don't invent more than the data supports.
 
