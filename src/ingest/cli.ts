@@ -34,7 +34,7 @@ async function main() {
 
   try {
     for (const meta of activities) {
-      await upsertActivity(sql, meta);
+      await upsertActivity(sql, meta, "bulk_export");
       counts.activities++;
 
       if (!meta.filename) {

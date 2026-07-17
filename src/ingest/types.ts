@@ -11,8 +11,8 @@ export interface ActivityMeta {
   maxHr: number | null;
   /** Path of the track file inside the export, e.g. "activities/123.fit.gz". Null for gym etc. */
   filename: string | null;
-  /** Full original CSV row (duplicate headers suffixed), kept verbatim in activities.raw */
-  raw: Record<string, string>;
+  /** Full original record (CSV row or API JSON), kept verbatim in activities.raw */
+  raw: unknown;
 }
 
 /**

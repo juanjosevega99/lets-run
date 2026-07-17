@@ -40,8 +40,9 @@ describe("parseActivitiesCsv", () => {
   });
 
   it("keeps the full original row, with duplicate headers suffixed", () => {
-    expect(run!.raw["Distance"]).toBe("7.21");
-    expect(run!.raw["Distance_2"]).toBe("7212.3");
+    const raw = run!.raw as Record<string, string>;
+    expect(raw["Distance"]).toBe("7.21");
+    expect(raw["Distance_2"]).toBe("7212.3");
   });
 
   it("throws on unparseable dates instead of silently shifting history", () => {

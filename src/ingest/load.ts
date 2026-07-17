@@ -1,7 +1,11 @@
 import type { Sql } from "../db.js";
 import type { ActivityMeta, Streams } from "./types.js";
 
-export async function upsertActivity(sql: Sql, meta: ActivityMeta): Promise<void> {
+export async function upsertActivity(
+  sql: Sql,
+  meta: ActivityMeta,
+  source: "bulk_export" | "api",
+): Promise<void> {
   await sql`
     insert into activities (
       id, name, sport_type, start_date,
@@ -10,7 +14,7 @@ export async function upsertActivity(sql: Sql, meta: ActivityMeta): Promise<void
     ) values (
       ${meta.id}, ${meta.name}, ${meta.sportType}, ${meta.startDate},
       ${meta.elapsedTimeS}, ${meta.movingTimeS}, ${meta.distanceM}, ${meta.elevationGainM},
-      ${meta.avgHr}, ${meta.maxHr}, 'bulk_export', ${meta.filename}, ${sql.json(meta.raw)}
+      ${meta.avgHr}, ${meta.maxHr}, ${source}, ${meta.filename}, ${sql.json(meta.raw as any)}
     )
     on conflict (id) do update set
       name = excluded.name,
@@ -22,8 +26,11 @@ export async function upsertActivity(sql: Sql, meta: ActivityMeta): Promise<void
       elevation_gain_m = excluded.elevation_gain_m,
       avg_hr = excluded.avg_hr,
       max_hr = excluded.max_hr,
-      source_file = excluded.source_file,
-      raw = excluded.raw
+      -- bulk_export's raw CSV row carries fields the API doesn't; never let a later
+      -- API sync (e.g. the overlap window at the sync watermark) clobber it
+      source = case when activities.source = 'bulk_export' then activities.source else excluded.source end,
+      source_file = case when activities.source = 'bulk_export' then activities.source_file else excluded.source_file end,
+      raw = case when activities.source = 'bulk_export' then activities.raw else excluded.raw end
   `;
 }
 

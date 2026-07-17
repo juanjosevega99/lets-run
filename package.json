@@ -12,7 +12,9 @@
     "migrate": "tsx scripts/migrate.ts",
     "ingest:export": "tsx src/ingest/cli.ts",
     "races:import": "tsx src/ingest/racesCli.ts",
-    "profile": "tsx src/profile/cli.ts"
+    "profile": "tsx src/profile/cli.ts",
+    "strava:auth": "tsx src/strava/authCli.ts",
+    "strava:sync": "tsx src/strava/syncCli.ts"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.171.0",
