@@ -71,11 +71,13 @@ If the LLM produces a plan that violates a rule, **the system rejects it and ret
 
 ## 5. Non-goals (explicit)
 
-- Mobile app
-- Multi-user / third-party auth
+- Native mobile app / PWA (a plain responsive website opens fine on my phone)
+- Multi-user / third-party auth (a single-user password gate to keep my data private once
+  deployed is fine — that's a lock, not multi-tenancy)
 - General-purpose chat
 - Nutrition, sleep, HRV
-- Production deploy / custom domain
+- Custom domain, scaling, multi-region (one free-tier private deploy for my own access is
+  the ceiling — see §11)
 - Polished UI (an ugly table is fine)
 
 ## 6. Deterministic models to implement
@@ -142,7 +144,7 @@ Anthropic SDK. No heavy framework until it hurts — plain SQL migrations, no OR
 | **F2.5** | Readout page (**no LLM**) | One ugly static page: fitness curve + backtest results + today's prediction. Makes the data tangible *before* any LLM work. Only justified because it reuses F1/F2 output verbatim and adds zero domain logic |
 | **F3** | LLM layer | Weekly plan as a typed structured output, tool-calling into F1 |
 | **F4** | Evals | Golden set (~30 cases) + hard-rule validator + LLM-as-judge for explanation quality |
-| **F5** | Minimal UI | One page: current fitness, prediction, this week's plan |
+| **F5** | Minimal UI | Simple **hosted, auth-gated website** (not PWA, not native): current fitness, prediction, this week's plan. Server reads Supabase; a single-user password gate keeps data private. A read-only view (data profile, coverage, history, races) can land earlier as F2.5 |
 
 **F2 is the gate.** If the error is 15%, a better prompt won't fix it — rethink the model or kill the project. Knowing that early is the senior part.
 
@@ -172,6 +174,10 @@ This project exists as much to **stop outsourcing my thinking** as it does to le
 - [x] Confidence interval: **empirical quantiles of backtest errors**. Run the backtest,
       collect the error distribution, report the point estimate with P10–P90 of historical
       errors around it. No parametric assumptions; directly reuses F2.
+- [x] How I use it: **a simple hosted, auth-gated website — not a CLI, not a PWA, not native.**
+      No offline/push need, so a PWA is pure overhead. Server-side reads Supabase (the DB
+      secret can't live in the browser); a single-user password gate keeps my data private.
+      Full dashboard waits for F1/F2; a read-only data view can come first (F2.5).
 
 **Open:**
 - [ ] Name. Working name `lets-run`; note that letsrun.com is a famous running forum, so the

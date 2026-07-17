@@ -13,6 +13,7 @@
     "ingest:export": "tsx src/ingest/cli.ts",
     "races:import": "tsx src/ingest/racesCli.ts",
     "profile": "tsx src/profile/cli.ts",
+    "web": "tsx src/web/server.ts",
     "strava:auth": "tsx src/strava/authCli.ts",
     "strava:sync": "tsx src/strava/syncCli.ts"
   },

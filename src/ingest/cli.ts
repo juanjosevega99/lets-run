@@ -6,6 +6,7 @@ import { connect } from "../db.js";
 import { parseActivitiesCsv } from "./activitiesCsv.js";
 import { parseGpx } from "./gpx.js";
 import { parseFit } from "./fit.js";
+import { parseTcx } from "./tcx.js";
 import { upsertActivity, upsertStreams } from "./load.js";
 import type { Streams } from "./types.js";
 
@@ -86,6 +87,7 @@ async function parseTrackFile(exportDir: string, filename: string): Promise<Stre
 
   if (name.endsWith(".gpx")) return parseGpx(buffer.toString("utf8"));
   if (name.endsWith(".fit")) return parseFit(buffer);
+  if (name.endsWith(".tcx")) return parseTcx(buffer.toString("utf8"));
   return null;
 }
 
