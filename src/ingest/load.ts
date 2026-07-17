@@ -34,16 +34,22 @@ export async function upsertActivity(
   `;
 }
 
+// postgres.js infers array element type from the data; an all-null channel (e.g. no
+// HR strap) has nothing to infer from and silently defaults to text[], which then
+// fails to insert into an integer[]/double precision[] column. Pin the OIDs instead.
+const INT4 = 23;
+const FLOAT8 = 701;
+
 export async function upsertStreams(sql: Sql, activityId: number, s: Streams): Promise<void> {
   if (s.timeS.length === 0) return;
   await sql`
     insert into activity_streams (activity_id, time_s, distance_m, altitude_m, heartrate)
     values (
       ${activityId},
-      ${sql.array(s.timeS)},
-      ${sql.array(s.distanceM)},
-      ${sql.array(s.altitudeM)},
-      ${sql.array(s.heartrate)}
+      ${sql.array(s.timeS, INT4)},
+      ${sql.array(s.distanceM, FLOAT8)},
+      ${sql.array(s.altitudeM, FLOAT8)},
+      ${sql.array(s.heartrate, INT4)}
     )
     on conflict (activity_id) do update set
       time_s = excluded.time_s,
