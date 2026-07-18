@@ -1,77 +1,107 @@
 # NEXT_STEPS.md — resume here
 
-Working notes for picking this back up. Not a permanent doc like PROJECT.md — delete
-or rewrite freely once it's stale. Written 2026-07-16.
+Working notes. Not permanent like `PROJECT.md` / `PRD.md` — rewrite freely.
+Rewritten 2026-07-18 (supersedes the 2026-07-16 version; everything it listed is now resolved).
 
-## 0. First thing: check the bulk export finished
+## 0. The clock
 
-I kicked off `npm run ingest:export -- /Users/juanvega/Downloads/export_30300800`
-(1818 activities) in the background and it was still running when we stopped.
+**Race: 24 April 2027. That is ~9 months out.** Base building should start now — the
+software is not the bottleneck, the training is. A 9-month runway from a detrained base is
+enough for a strong podium attempt, not enough to bank on winning (see §3).
 
-```
-npm run profile
-```
+## 1. Where things actually stand
 
-Confirms it landed. Expect roughly:
-- ~1818 activities, spanning your full Strava history
-- streams present for FIT (614) and GPX (293) files
-- **no streams for TCX files (763 of them)** — our parser only handles `.fit`/`.gpx`
-  today; TCX activities will show up as metadata-only (no GAP/Minetti possible for
-  those runs until a TCX parser exists). That's a chunk of history, worth deciding
-  on deliberately rather than silently ignoring — see "Open decision" below.
-- 2 `.json` files unhandled too (probably manual entries, likely negligible)
+**Done — data layer is complete and rich:**
+- F0a bulk export ingestion: 1818 activities, 2018-04-30 → 2026-07-11
+- F0b Strava API incremental sync (OAuth + watermark) — built, verified live
+- TCX parser (`src/ingest/tcx.ts`) — this was the big unlock. Stream coverage went
+  **50% → 92%**, HR **33% → 75%**, elevation **42% → 78%**. Recovered 492 runs including
+  ~294 of the 380 peak 2021-22 runs (2021 running was ~100% TCX, previously stream-less).
+- T0 race inventory: **8 races imported**. NOTE: times are Strava moving times accepted as
+  close-enough, not official chip times (~1-2 min noise in the answer key — remember this
+  when reading F2's error).
+- `npm run profile` — read-only coverage report
+- `npm run web` → localhost:3000 — thin read-only dashboard (F2.5 seed)
+- PROJECT.md decisions closed: Supabase; empirical-quantile confidence intervals;
+  simple hosted auth-gated website (not PWA/native)
 
-If `npm run profile` errors or counts look wrong, check
-`/tmp/ingest_output.log` for parse failures per activity.
+**Not started:** F1 (deterministic layer) — the critical path. Everything else waits on it.
 
-## 1. Open decision: TCX support
-
-763 of 1818 activities (42%) are TCX and currently ingest with metadata only, no
-GPS/HR/altitude streams. Options, not yet decided:
-- Write a TCX parser (same shape as `src/ingest/gpx.ts` / `fit.ts`) — ingestion is
-  AI-OK per PROJECT.md §9, so this is fair game to build together.
-- Accept the gap if TCX activities are mostly old/low-signal (check date range and
-  sport types of TCX-only activities before deciding).
-
-## 2. T0 — race inventory (still open, manual, blocking)
-
-This is the task that decides whether S1 (MAE < 3%) is even measurable. Per
-PROJECT.md §11 it's still unchecked.
+## 2. The critical path, in order
 
 ```
-cp races.template.csv races.csv    # if you haven't already
-# edit races.csv by hand — one row per race with a RELIABLE official time
-npm run races:import -- races.csv
-npm run profile                    # check races: matched vs unmatched
+F1 (hand-written)  ->  F2 backtest GATE  ->  PRD P-A ... P-E
 ```
 
-`races.csv` is gitignored on purpose (personal data) — the template is what's
-committed. Unmatched races (no corresponding Strava activity) are fine, just noted.
+**F1 — the AI-free zone. Suggested order (simplest first):**
+1. **Riegel** — one formula, immediately testable against the 8 imported races.
+   Predict the 2022 half from a 2022 10K and compare. Fastest possible first win.
+2. **Banister** CTL/ATL/TSB — answers "what shape am I in today". Needs the
+   per-activity stress-score fallback hierarchy (PROJECT.md §6).
+3. **VDOT / Daniels** — race time → capacity → training paces.
+4. **GAP / Minetti** — do last. Now known to be a *smaller* lever than assumed (see §4).
 
-## 3. After T0: F1, the deterministic layer
+**F2 is still the gate.** If backtest error is bad, no amount of PRD cleverness saves it.
 
-Per PROJECT.md §9, this is the **AI-free zone** — hand-written, autocomplete off.
-I (Claude) can critique it once it exists, not write it. Planned modules, in
-`src/deterministic/`:
-- Riegel (distance extrapolation)
-- VDOT / Daniels
-- GAP / Minetti (needs the streams from step 0/1 — this is why TCX coverage matters)
-- Banister CTL/ATL/TSB with the stress-score fallback hierarchy (PROJECT.md §6)
+## 3. Competitive target (new goal: win / podium)
 
-## Loose ends / housekeeping (low priority)
+2026 21K results — the benchmark to beat:
 
-- `~/.supabase_token`, `~/.supabase_db_password`, `~/.strava_secret` are sitting in
-  your home dir from setup (used to avoid pasting secrets into chat). Fine to leave,
-  fine to delete — nothing reads them anymore except `.env` which already has what
-  it needs.
-- Strava OAuth: refresh token is in `.env` (`STRAVA_REFRESH_TOKEN`). Re-run
-  `npm run strava:sync` anytime to pull activities newer than what's in the DB.
+| place | time | pace |
+|---|---|---|
+| 1st M (30-39) | 1:32:36 | ~4:23/km |
+| 2nd M | 1:37:14 | ~4:37/km |
+| 3rd M | 1:39:24 | ~4:42/km |
+| 1st F (30-39) | 1:37:55 | ~4:39/km |
 
-## What's already done
+Reference: 2022 peak road halves were **1:38-1:40** (~4:39-4:44/km) — i.e. peak-Juan was at
+roughly 2026's 3rd-place pace, *on road*. Trail costs a bit more, so podium = return to peak
+**and exceed it**. Winning needs ~5-7 min beyond any time ever run. Honest read: **podium =
+stretch but real; win = unlikely in 9 months from current fitness.**
 
-- Supabase project `lets-run` (`sa-east-1`) created and migrated
-- F0a bulk export ingestion (CSV/GPX/FIT parsers) — built, running as of this doc
-- F0b Strava API incremental sync (OAuth + watermark sync) — built and verified live
-- Data profile tool (`npm run profile`) — read-only coverage report
-- Bug fixed: all-null stream channels (e.g. HR-only gym sessions) failed to insert;
-  fixed by pinning Postgres array OIDs in `src/ingest/load.ts`
+Caveat: one year of data, small field — winning times swing year to year. Worth pulling
+2024/2025 winning times to see the actual spread (result portals are JS-based; needs the
+browser, not a plain fetch).
+
+## 4. Course reality (settled — stop re-litigating)
+
+Official 21K altimetry: runs at **20-100 m above sea level**, aid stations labelled 30 m /
+23 m / 22 m, start ~50 m → finish 22 m (net slightly downhill), two modest ~50-70 m bumps.
+Torres del Paine valley floor, far-south Patagonia — near sea level despite being in Chile.
+
+Consequences:
+- **No altitude/oxygen correction.** Don't build it. Sea level.
+- **GAP matters less than assumed.** Real but modest; not a mountain course.
+- **The genuine uncertainty is surface + wind** (gravel, river crossings, Patagonian wind),
+  which the models can't see. That belongs in a wider prediction interval, not a new model.
+
+## 5. PRD gaps to resolve (before P-A)
+
+- [ ] **F-A has no dimensions to analyse.** The sensitivity loop iterates over
+      `{aerobic_base, threshold, grade_durability}`, but Riegel (time→time), VDOT (a single
+      scalar) and Banister (load/fitness/fatigue) produce *none* of those as separable
+      parameters. As planned, `f(state)` is scalar-in/scalar-out. Either extend the model to
+      express separable dimensions (e.g. critical-speed splitting aerobic vs anaerobic, plus
+      an explicit grade term) or scope F-A to what the math can actually express.
+      **This is the crux, and it's AI-free-zone work.**
+- [ ] PRD §1 expects grade-durability to be a big early limiter — §4 above says otherwise.
+      Rewrite that expectation.
+- [ ] PRD has no **target time / gap-to-podium** concept. Add it: the *Now* screen should
+      show predicted time *against the target*, and F-A's ROI is sharper when it's closing a
+      measurable gap.
+- [ ] `training_cost` unit (PRD §7) — must be commensurable across dimensions or the ROI
+      comparison is apples-to-oranges.
+- [ ] Age category? Determines whether the realistic target is overall podium or age-group
+      podium (the 2026 overall winner was in 30-39, so that bracket is competitive).
+
+## 6. Housekeeping
+
+- **Nothing committed since `d173a64`.** `PRD.md` is untracked; the TCX parser, web view and
+  PROJECT.md updates are committed. Commit `PRD.md` when ready.
+- Deploying the web dashboard for phone access still needs: a host (Vercel free tier) + a
+  single-user password gate (PROJECT.md §11). Not urgent.
+- Garmin (PRD §2): partly answered already — the Strava export yielded 92% stream coverage
+  with 75% HR, so the marginal value of Garmin's richer streams is **lower than assumed**.
+  Confirm what's genuinely missing before spending a weekend on it.
+- `races.csv` gotcha: notes fields must avoid commas and double-quotes or csv-parse rejects
+  the row.
