@@ -18,4 +18,7 @@ Modules:
 - `limiter.ts` — v1 deterministic limiter heuristic (NOT the full PRD P-A sensitivity
   analysis — that needs dimensions the models don't express yet; see PRD §7 CRUX)
 - `validator.ts` — the S2 hard-rule plan validator (inviolable, retries the LLM)
+- `weekTemplate.ts` — free, no-LLM full-week generator (`npm run plan:free`). Same
+  limiter/validator, fixed percentage-split templates instead of an LLM writing the
+  week. Zero API cost, ever — the honest fallback when ANTHROPIC_API_KEY isn't set.
 - `predictors.ts` — the composed race predictors registered into the F2 backtest

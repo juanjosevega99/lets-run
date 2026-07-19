@@ -29,7 +29,7 @@ async function main() {
     }
     console.log(`\n${dayName}:\n`);
 
-    for (const line of suggest(ctx.tsb, ctx.limiter.limiter, ctx.paces)) {
+    for (const line of suggest(ctx.tsb, ctx.limiter.limiter, ctx.paces, ctx.easyHrCeiling)) {
       console.log(`  ${line}`);
     }
 
@@ -44,17 +44,22 @@ function suggest(
   tsb: number,
   limiter: string,
   paces: { easySecPerKm: number; thresholdSecPerKm: number } | null,
+  easyHrCeiling: number | null,
 ): string[] {
   const easy = paces ? paceStr(paces.easySecPerKm) : null;
+  // HR governs when available — a pace target alone can be far too fast while detrained.
+  const effort = easyHrCeiling
+    ? `HR under ${easyHrCeiling} bpm${easy ? ` (roughly ${easy}/km)` : ""}`
+    : easy
+      ? `${easy}/km, conversational`
+      : "fully conversational effort";
 
   // TSB below -20 means real accumulated fatigue (here: two long rides this weekend) —
   // recovery outranks the limiter regardless of what it is.
   if (tsb < -20) {
     return [
       `TSB ${tsb.toFixed(1)} — real fatigue on board (this weekend's rides). Recover first.`,
-      easy
-        ? `Easy 20-30min jog at ${easy}/km if the legs feel okay, or full rest if they don't.`
-        : `Full rest or a short easy walk/jog.`,
+      `Easy 20-30min jog — ${effort} — if the legs feel okay, or full rest if they don't.`,
       `Don't chase volume today — a fatigued easy run teaches the body the wrong pace.`,
     ];
   }
@@ -63,9 +68,7 @@ function suggest(
     return [
       `Limiter is aerobic base — CTL is still near zero, so the only job right now is`,
       `consistent easy running, not intensity.`,
-      easy
-        ? `Suggest: 20-30min continuous easy run at ${easy}/km, conversational effort.`
-        : `Suggest: 20-30min continuous easy run at a fully conversational pace.`,
+      `Suggest: 20-30min continuous easy run — ${effort}.`,
     ];
   }
 

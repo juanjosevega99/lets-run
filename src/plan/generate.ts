@@ -21,6 +21,15 @@ export interface PlanContext {
   previousWeekKm: number | null;
   recentWeeklyKm: number[]; // last ~4 weeks, oldest first
   paces: { easySecPerKm: number; thresholdSecPerKm: number } | null;
+  /**
+   * Where the easy pace came from. "observed" = median pace of recent runs actually
+   * run in the easy HR band (reflects CURRENT fitness). "vdot" = derived from the
+   * best-ever race (reflects PEAK fitness — too fast for a detrained athlete; only
+   * used when there's no recent HR-tagged running to observe).
+   */
+  paceSource: "observed" | "vdot" | null;
+  /** Do-not-exceed HR for easy running (79% HRmax). Null when no HR data exists. */
+  easyHrCeiling: number | null;
   daysToRace: number;
   targetTimeS: number;
   raceName: string;
@@ -82,8 +91,17 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
     `- last week's actual volume: ${ctx.previousWeekKm != null ? `${ctx.previousWeekKm.toFixed(1)} km (10% rule baseline)` : "none — no progression cap this week, still be conservative"}`,
   );
   if (ctx.paces) {
+    const provenance =
+      ctx.paceSource === "observed"
+        ? " (measured from recent runs in the easy HR band — reflects CURRENT fitness)"
+        : " (derived from best-ever race — may be too fast while detrained; prefer the HR ceiling)";
     lines.push(
-      `- training paces: easy ${paceStr(ctx.paces.easySecPerKm)}, threshold ${paceStr(ctx.paces.thresholdSecPerKm)}`,
+      `- training paces: easy ${paceStr(ctx.paces.easySecPerKm)}, threshold ${paceStr(ctx.paces.thresholdSecPerKm)}${provenance}`,
+    );
+  }
+  if (ctx.easyHrCeiling != null) {
+    lines.push(
+      `- easy HR ceiling: ${ctx.easyHrCeiling} bpm — easy sessions must stay under this. HR governs, pace is a guide.`,
     );
   }
   lines.push(`- race: ${ctx.raceName} in ${ctx.daysToRace} days · target ${formatDuration(ctx.targetTimeS)}`);

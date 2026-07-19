@@ -10,6 +10,8 @@ const ctx: PlanContext = {
   previousWeekKm: 20,
   recentWeeklyKm: [0, 5, 12, 20],
   paces: { easySecPerKm: 360, thresholdSecPerKm: 252 },
+  paceSource: "observed",
+  easyHrCeiling: 159,
   daysToRace: 279,
   targetTimeS: 5834,
   raceName: "Patagonia 21K",
@@ -73,5 +75,16 @@ describe("generateWeekPlan (validator retry loop)", () => {
     expect(p).toContain("6:00/km"); // easy pace
     expect(p).toContain("1:37:14"); // target
     expect(p).toContain("279 days");
+  });
+
+  it("prompt states the HR ceiling and flags pace provenance so the LLM can't over-prescribe", () => {
+    const observed = buildUserPrompt(ctx, []);
+    expect(observed).toContain("easy HR ceiling: 159 bpm");
+    expect(observed).toContain("HR governs");
+    expect(observed).toContain("reflects CURRENT fitness");
+
+    // when the pace came from a best-ever race, the prompt must warn it may be too fast
+    const fromVdot = buildUserPrompt({ ...ctx, paceSource: "vdot" }, []);
+    expect(fromVdot).toContain("may be too fast while detrained");
   });
 });

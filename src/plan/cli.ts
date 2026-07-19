@@ -3,8 +3,7 @@ import { connect } from "../db.js";
 import { generateWeekPlan } from "./generate.js";
 import { anthropicLlm } from "./llm.js";
 import { toValidatorSessions } from "./schema.js";
-import { buildPlanContext } from "./context.js";
-import { dashboardTz } from "../web/queries.js";
+import { buildPlanContext, nextMonday } from "./context.js";
 
 /**
  * Generates next week's plan (F3) and persists it to plan_week:
@@ -52,27 +51,15 @@ async function main() {
   }
 }
 
-function nextMonday(): string {
-  const tz = dashboardTz();
-  const now = new Date();
-  // walk forward to the next Monday in the athlete's timezone
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(now.getTime() + i * 86_400_000);
-    const weekday = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: tz }).format(d);
-    if (weekday === "Mon") {
-      return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d); // YYYY-MM-DD
-    }
-  }
-  throw new Error("unreachable: no Monday in the next 7 days");
-}
-
 main().catch((err) => {
   const msg = String(err?.message ?? err);
   if (msg.includes("authentication") || msg.includes("apiKey") || msg.includes("x-api-key")) {
     console.error(
       "\nNo Anthropic credentials found. Set ANTHROPIC_API_KEY in .env (create a key at" +
         " console.anthropic.com), or run `ant auth login`. Everything deterministic already" +
-        " ran — only the plan-phrasing step needs the API.",
+        " ran — only the plan-phrasing step needs the API.\n" +
+        "No cost option: `npm run plan:free` generates a full week from the same limiter" +
+        " and fitness data using fixed templates instead of an LLM call.",
     );
   } else {
     console.error(msg);

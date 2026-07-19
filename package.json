@@ -21,7 +21,8 @@
     "fitness:rebuild": "tsx src/fitness/rebuild.ts",
     "predict": "tsx src/predict/cli.ts",
     "plan": "tsx src/plan/cli.ts",
-    "tomorrow": "tsx src/plan/tomorrow.ts"
+    "tomorrow": "tsx src/plan/tomorrow.ts",
+    "plan:free": "tsx src/plan/freeCli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

@@ -18,6 +18,8 @@ bottleneck; the training is.
 | `npm run backtest` | F2: all predictors vs the 8 races, leak-proof cutoffs, MAE report |
 | `npm run predict` | Live race prediction + empirical P10–P90 interval → prediction_log |
 | `npm run plan` | F3: limiter → LLM week plan → S2 validator gate (retry ≤3) → plan_week |
+| `npm run plan:free` | **Zero-cost alternative to `plan`** — same limiter/fitness inputs, fixed percentage-split templates instead of an LLM call (`src/deterministic/weekTemplate.ts`), same S2 validator (self-satisfies by construction, checked as a hard assertion). No API key ever needed. |
+| `npm run tomorrow` | Zero-cost single-day suggestion (not a full week) — for a quick check without generating/persisting a plan |
 | `npm run web` | Dashboard: Now / This week / Trajectory on live data |
 
 Deterministic layer (`src/deterministic/`): Riegel (+ personal exponent fit), VDOT
@@ -37,11 +39,39 @@ reference across the 2021→2022 fitness surge.
 Today's prediction: **1:48:37** (1:27–2:07), gap to target **11:23**. Wide interval = honest
 (it inherits the polluted error distribution).
 
+## 2.5 Pace prescription bug — FIXED 2026-07-19
+
+Juan caught this: the plan prescribed "easy 5:14/km", which for him today would be ~170+ bpm
+(84%+ of max 201) — threshold effort, not easy. Cause: training paces came from **best-ever
+VDOT 48.6** (a 2019 10K) while CTL is 0.6. The race predictor already applies a CTL detraining
+adjustment; pace prescription did not.
+
+Evidence from his own data — same HR, ~1:40/km slower now:
+
+| era | pace | avg HR |
+|---|---|---|
+| 2022 peak | 5:35–5:46/km | 144–157 |
+| 2026 now | 7:09–7:28/km | 148–155 |
+
+Fix: `src/deterministic/zones.ts` (Daniels HR bands: easy 65–79% HRmax → ceiling **159 bpm**)
+plus **observed-pace estimation** in `plan/context.ts` — median pace of runs in the last 180
+days actually run under the easy HR ceiling. Easy pace went **5:14 → 7:20/km**, `paceSource`
+flipped `vdot` → `observed`. Sessions now lead with the HR ceiling ("HR governs — slow down or
+walk to stay under") and demote pace to a guide. HR is self-normalizing to current fitness;
+a pace derived from past fitness is not. The LLM prompt carries the ceiling + pace provenance
+too, so `npm run plan` can't over-prescribe either.
+
+**Remaining gap:** `thresholdSecPerKm` is still peak-VDOT-derived. Harmless today (aerobic_base
+weeks contain no threshold work) but must be fixed before the limiter reaches `threshold`.
+
 ## 3. Pending on Juan
 
-- [ ] **ANTHROPIC_API_KEY in `.env`** (console.anthropic.com) — the only missing piece for
-      `npm run plan`. Everything deterministic already runs without it.
-- [ ] **Start running.** aerobic_base, says your own model.
+- [ ] **First real week is live** (`npm run plan:free`, week of 2026-07-20): 12km total,
+      5 easy runs + Sunday long run, held flat (not +10%) because TSB was -29.5 from two
+      long weekend rides. **Start running.** aerobic_base, says your own model.
+- [ ] **ANTHROPIC_API_KEY in `.env`** (console.anthropic.com) — optional, not required.
+      Only needed for `npm run plan` (LLM-phrased weeks with narrative explanation).
+      `npm run plan:free` is the permanent zero-cost path and is what's running now.
 - [ ] **T0 curation:** decide whether "Carrera de la mujer 5k" (paced, not max effort) stays
       in the answer key; consider an `is_max_effort` flag. Improves the interval immediately.
 - [ ] Commit the working tree (~24 files). Then deploy web for phone access (host + the
