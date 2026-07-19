@@ -23,3 +23,13 @@ export function formatPace(distanceM: number | null, timeS: number | null): stri
 export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * YYYY-MM-DD from a Postgres DATE column, which postgres.js may hand back as a
+ * midnight-UTC Date. String() would render it in LOCAL time and shift a day back
+ * (UTC−5) — always go through UTC.
+ */
+export function dateOnly(value: unknown): string {
+  if (value instanceof Date) return isoDate(value);
+  return String(value).slice(0, 10);
+}

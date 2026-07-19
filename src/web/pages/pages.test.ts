@@ -20,6 +20,7 @@ function nowData(overrides: Partial<NowData> = {}): NowData {
   return {
     daysToRace: 280,
     latestPrediction: null,
+    fitness: { day: "2026-07-19", ctl: 0.6, atl: 8.0, tsb: -8.7 },
     snapshot,
     latestActivityDate: new Date("2026-07-11T10:00:00Z"),
     races: [
@@ -82,10 +83,45 @@ describe("renderNow", () => {
   });
 });
 
+describe("renderNow fitness", () => {
+  it("shows CTL/ATL/TSB cards", () => {
+    const html = renderNow(nowData());
+    expect(html).toContain("0.6");
+    expect(html).toContain("CTL — running fitness");
+    expect(html).toContain("-8.7");
+  });
+  it("prompts for the rebuild when fitness_state is empty", () => {
+    const html = renderNow(nowData({ fitness: null }));
+    expect(html).toContain("fitness:rebuild");
+  });
+});
+
 describe("renderWeek", () => {
+  it("renders a generated plan with the key session starred", () => {
+    const html = renderWeek({
+      tz: "America/Bogota",
+      activities: [],
+      plan: {
+        weekStart: "2026-07-20",
+        targetLimiter: "aerobic_base",
+        keySession: { day: 6, title: "Long run", description: "easy", intensity: "low", planned_km: 8 },
+        supportSessions: [
+          { day: 0, title: "Easy run", description: "conversational", intensity: "low", planned_km: 5 },
+        ],
+        explanation: "Rebuild volume gently.",
+        generatedAt: new Date("2026-07-19T00:00:00Z"),
+      },
+    });
+    expect(html).toContain("week of 2026-07-20");
+    expect(html).toContain("★ Long run");
+    expect(html).toContain("aerobic_base");
+    expect(html).toContain("Rebuild volume gently.");
+  });
+
   it("renders logged activities with day names in the local timezone", () => {
     const html = renderWeek({
       tz: "America/Bogota",
+      plan: null,
       activities: [
         {
           // 03:00 UTC Tuesday = 22:00 Monday in Bogota — must render as Mon
@@ -104,7 +140,7 @@ describe("renderWeek", () => {
   });
 
   it("shows empty states for both plan and empty log", () => {
-    const html = renderWeek({ tz: "America/Bogota", activities: [] });
+    const html = renderWeek({ tz: "America/Bogota", activities: [], plan: null });
     expect(html).toContain("No plan yet");
     expect(html).toContain("Nothing logged yet this week");
   });

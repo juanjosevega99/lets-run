@@ -1,7 +1,7 @@
 import { barChart } from "../svg.js";
 import { formatDuration } from "../../lib/time.js";
 import { esc } from "../html.js";
-import { RACE } from "../target.js";
+import { RACE } from "../../lib/race.js";
 import type { WeekVolume, PredictionRow } from "../queries.js";
 
 /**

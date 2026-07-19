@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { connect, type Sql } from "../db.js";
-import type { Streams } from "../ingest/types.js";
-import type { ActivitySummary, RaceSummary, TrainingHistory, Predictor } from "./types.js";
+import type { RaceSummary, TrainingHistory, Predictor } from "./types.js";
 import { predictors } from "./registry.js";
 import { signedErrorPct } from "./metrics.js";
 import { formatReport, type PredictorReport, type RaceEvaluation } from "./report.js";
+import { loadHistory, loadRaces } from "./history.js";
 import { isoDate } from "../lib/time.js";
 
 /**
@@ -22,20 +22,8 @@ import { isoDate } from "../lib/time.js";
 async function main() {
   const sql = connect();
   try {
-    const races = await sql<
-      {
-        id: number;
-        name: string;
-        race_date: unknown;
-        distance_m: number;
-        official_time_s: number;
-        terrain: "road" | "trail" | "track";
-        elevation_gain_m: number | null;
-      }[]
-    >`select id, name, race_date, distance_m, official_time_s, terrain, elevation_gain_m
-      from races order by race_date`;
-
-    if (races.length === 0) {
+    const allRaces = await loadRaces(sql);
+    if (allRaces.length === 0) {
       console.log("backtest: races table is empty — import races.csv first (npm run races:import).");
       return;
     }
@@ -43,16 +31,6 @@ async function main() {
       console.log(formatReport([]));
       return;
     }
-
-    const allRaces: RaceSummary[] = races.map((r) => ({
-      id: r.id,
-      name: r.name,
-      raceDate: asUtcDate(r.race_date),
-      distanceM: r.distance_m,
-      officialTimeS: r.official_time_s,
-      terrain: r.terrain,
-      elevationGainM: r.elevation_gain_m,
-    }));
 
     const reports: PredictorReport[] = [];
     for (const predictor of predictors) {
@@ -70,63 +48,6 @@ async function main() {
   } finally {
     await sql.end();
   }
-}
-
-async function loadHistory(sql: Sql, cutoff: Date, allRaces: RaceSummary[]): Promise<TrainingHistory> {
-  const rows = await sql<
-    {
-      id: number;
-      name: string;
-      sport_type: string;
-      start_date: Date;
-      distance_m: number | null;
-      moving_time_s: number | null;
-      elapsed_time_s: number | null;
-      elevation_gain_m: number | null;
-      avg_hr: number | null;
-      max_hr: number | null;
-    }[]
-  >`select id, name, sport_type, start_date, distance_m, moving_time_s, elapsed_time_s,
-           elevation_gain_m, avg_hr, max_hr
-    from activities where start_date < ${cutoff} order by start_date`;
-
-  const activities: ActivitySummary[] = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    sportType: r.sport_type,
-    startDate: r.start_date,
-    distanceM: r.distance_m,
-    movingTimeS: r.moving_time_s,
-    elapsedTimeS: r.elapsed_time_s,
-    elevationGainM: r.elevation_gain_m,
-    avgHr: r.avg_hr,
-    maxHr: r.max_hr,
-  }));
-
-  return {
-    cutoff,
-    activities,
-    priorRaces: allRaces.filter((r) => r.raceDate.getTime() < cutoff.getTime()),
-    getStreams: async (activityId: number): Promise<Streams | null> => {
-      const s = await sql<
-        {
-          time_s: number[];
-          distance_m: (number | null)[] | null;
-          altitude_m: (number | null)[] | null;
-          heartrate: (number | null)[] | null;
-        }[]
-      >`select time_s, distance_m, altitude_m, heartrate from activity_streams
-        where activity_id = ${activityId}`;
-      const row = s[0];
-      if (!row) return null;
-      return {
-        timeS: row.time_s,
-        distanceM: row.distance_m ?? row.time_s.map(() => null),
-        altitudeM: row.altitude_m ?? row.time_s.map(() => null),
-        heartrate: (row.heartrate ?? row.time_s.map(() => null)) as (number | null)[],
-      };
-    },
-  };
 }
 
 async function evaluateRace(
@@ -172,12 +93,6 @@ async function logPrediction(
       ${sql.json({ backtest: true, actual_time_s: e.actualS, error_pct: e.errorPct, note: e.note ?? null })}
     )
   `;
-}
-
-/** postgres.js may hand back DATE columns as strings; normalize to midnight-UTC Date. */
-function asUtcDate(value: unknown): Date {
-  if (value instanceof Date) return value;
-  return new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
 }
 
 main().catch((err) => {

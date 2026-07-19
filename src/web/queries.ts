@@ -1,4 +1,5 @@
 import type { Sql } from "../db.js";
+import { dateOnly } from "../lib/time.js";
 
 /**
  * Display-level SQL aggregations for the dashboard. Deliberately dumb: sums, counts,
@@ -151,11 +152,71 @@ export async function allRaces(sql: Sql): Promise<RaceRow[]> {
   >`select name, race_date, distance_m, official_time_s, terrain from races order by race_date`;
   return rows.map((r) => ({
     name: r.name,
-    raceDate: String(r.race_date).slice(0, 10),
+    raceDate: dateOnly(r.race_date),
     distanceKm: r.distance_m / 1000,
     officialTimeS: r.official_time_s,
     terrain: r.terrain,
   }));
+}
+
+export interface FitnessRow {
+  day: string;
+  ctl: number;
+  atl: number;
+  tsb: number;
+}
+
+/** Today's (latest) Banister state, if the fitness pipeline has run. */
+export async function latestFitness(sql: Sql): Promise<FitnessRow | null> {
+  const rows = await sql<{ day: unknown; ctl: number; atl: number; tsb: number }[]>`
+    select day, ctl, atl, tsb from fitness_state order by day desc limit 1
+  `;
+  const r = rows[0];
+  return r ? { day: dateOnly(r.day), ctl: r.ctl, atl: r.atl, tsb: r.tsb } : null;
+}
+
+export interface PlanSessionRow {
+  day: number;
+  title: string;
+  description: string;
+  intensity: "low" | "high" | "rest";
+  planned_km: number;
+}
+
+export interface PlanRow {
+  weekStart: string;
+  targetLimiter: string | null;
+  keySession: PlanSessionRow;
+  supportSessions: PlanSessionRow[];
+  explanation: string | null;
+  generatedAt: Date;
+}
+
+/** The most recently generated plan (current or upcoming week). */
+export async function latestPlan(sql: Sql): Promise<PlanRow | null> {
+  const rows = await sql<
+    {
+      week_start: unknown;
+      target_limiter: string | null;
+      key_session: PlanSessionRow;
+      support_sessions: PlanSessionRow[];
+      explanation: string | null;
+      generated_at: Date;
+    }[]
+  >`
+    select week_start, target_limiter, key_session, support_sessions, explanation, generated_at
+    from plan_week order by week_start desc limit 1
+  `;
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    weekStart: dateOnly(r.week_start),
+    targetLimiter: r.target_limiter,
+    keySession: r.key_session,
+    supportSessions: r.support_sessions,
+    explanation: r.explanation,
+    generatedAt: r.generated_at,
+  };
 }
 
 export interface PredictionRow {

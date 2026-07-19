@@ -3,11 +3,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { connect } from "../db.js";
 import { layout } from "./layout.js";
 import { isAuthorized } from "./auth.js";
-import { RACE, daysToRace } from "./target.js";
+import { RACE, daysToRace } from "../lib/race.js";
 import {
   allRaces,
   dashboardTz,
   latestActivityDate,
+  latestFitness,
+  latestPlan,
   livePredictions,
   peakEraWeeklyAvgKm,
   recentSnapshot,
@@ -61,8 +63,9 @@ async function route(path: string): Promise<string | null> {
   const now = new Date();
   switch (path) {
     case "/": {
-      const [predictions, snapshot, latest, races] = await Promise.all([
+      const [predictions, fitness, snapshot, latest, races] = await Promise.all([
         livePredictions(sql),
+        latestFitness(sql),
         recentSnapshot(sql, 28),
         latestActivityDate(sql),
         allRaces(sql),
@@ -73,6 +76,7 @@ async function route(path: string): Promise<string | null> {
         renderNow({
           daysToRace: daysToRace(now),
           latestPrediction: predictions.at(-1) ?? null,
+          fitness,
           snapshot,
           latestActivityDate: latest,
           races,
@@ -81,8 +85,12 @@ async function route(path: string): Promise<string | null> {
       );
     }
     case "/week": {
-      const activities = await thisWeekActivities(sql);
-      return layout("lets-run · this week", "/week", renderWeek({ activities, tz: dashboardTz() }));
+      const [activities, plan] = await Promise.all([thisWeekActivities(sql), latestPlan(sql)]);
+      return layout(
+        "lets-run · this week",
+        "/week",
+        renderWeek({ activities, plan, tz: dashboardTz() }),
+      );
     }
     case "/trajectory": {
       const [weeks, peakAvgKm, predictions] = await Promise.all([

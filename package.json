@@ -16,9 +16,15 @@
     "web": "tsx src/web/server.ts",
     "strava:auth": "tsx src/strava/authCli.ts",
     "strava:sync": "tsx src/strava/syncCli.ts",
-    "backtest": "tsx src/backtest/run.ts"
+    "backtest": "tsx src/backtest/run.ts",
+    "races:link": "tsx src/ingest/racesLink.ts",
+    "fitness:rebuild": "tsx src/fitness/rebuild.ts",
+    "predict": "tsx src/predict/cli.ts",
+    "plan": "tsx src/plan/cli.ts",
+    "tomorrow": "tsx src/plan/tomorrow.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "@garmin/fitsdk": "^21.171.0",
     "csv-parse": "^5.6.0",
     "dotenv": "^16.4.5",

@@ -1,16 +1,18 @@
 import { esc } from "../html.js";
 import { formatDuration, formatPace } from "../../lib/time.js";
-import type { LoggedActivity } from "../queries.js";
+import type { LoggedActivity, PlanRow } from "../queries.js";
 
 /**
- * PRD F-C screen 2, "This week": what was actually logged this week (real, from Strava)
- * and the prescribed week (empty until F-A/F3 exist — the plan generator needs the
- * deterministic layer to decide the limiter before the LLM can phrase the week).
+ * PRD F-C screen 2, "This week": the prescribed week (from plan_week, key session
+ * first) and what was actually logged (from Strava).
  */
 export interface WeekData {
   activities: LoggedActivity[];
+  plan: PlanRow | null;
   tz: string;
 }
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function renderWeek(d: WeekData): string {
   const dayFmt = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: d.tz });
@@ -32,16 +34,45 @@ export function renderWeek(d: WeekData): string {
         .join("")}</tbody>
     </table>`;
 
+  const planned = d.plan
+    ? renderPlan(d.plan)
+    : `<p class="empty">No plan yet — generate one with <code>npm run plan</code>
+       (needs Anthropic credentials; the S2 validator gates every plan).</p>`;
+
   return `
   <h1>This week</h1>
 
-  <h2>Planned</h2>
-  <p class="empty">No plan yet — this is PRD F-A/F-B territory. When it exists, this section
-  leads with the <strong>key session</strong> (the limiter it targets and its modeled
-  time-gain on the race prediction), support sessions below, and one paragraph of <em>why</em>.
-  It requires the hand-written deterministic layer (F1) first: the plan's "what" is math,
-  only its phrasing is the LLM's.</p>
+  <h2>Planned${d.plan ? ` · week of ${esc(d.plan.weekStart)}` : ""}</h2>
+  ${planned}
 
   <h2>Logged</h2>
   ${logged}`;
+}
+
+function renderPlan(plan: PlanRow): string {
+  const sessions = [
+    { ...plan.keySession, isKey: true },
+    ...plan.supportSessions.map((s) => ({ ...s, isKey: false })),
+  ].sort((a, b) => a.day - b.day);
+
+  const rows = sessions
+    .map(
+      (s) =>
+        `<tr${s.isKey ? ' style="font-weight:600"' : ""}>
+          <td>${DAY_NAMES[s.day] ?? s.day}</td>
+          <td>${s.isKey ? "★ " : ""}${esc(s.title)}</td>
+          <td>${esc(s.intensity)}</td>
+          <td class="num">${s.planned_km > 0 ? s.planned_km.toFixed(1) : "—"}</td>
+          <td>${esc(s.description)}</td>
+        </tr>`,
+    )
+    .join("");
+
+  return `
+  ${plan.targetLimiter ? `<p class="sub">key session targets: <strong>${esc(plan.targetLimiter)}</strong></p>` : ""}
+  <table>
+    <thead><tr><th>day</th><th>session</th><th>intensity</th><th class="num">km</th><th>detail</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${plan.explanation ? `<p><em>${esc(plan.explanation)}</em></p>` : ""}`;
 }

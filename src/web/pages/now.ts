@@ -1,7 +1,7 @@
 import { esc } from "../html.js";
 import { formatDuration, formatPace, isoDate } from "../../lib/time.js";
-import { RACE } from "../target.js";
-import type { RecentSnapshot, RaceRow, PredictionRow } from "../queries.js";
+import { RACE } from "../../lib/race.js";
+import type { RecentSnapshot, RaceRow, PredictionRow, FitnessRow } from "../queries.js";
 
 /**
  * PRD F-C screen 1, "Now": target + gap, prediction (honest empty state until F1/F2),
@@ -11,6 +11,7 @@ import type { RecentSnapshot, RaceRow, PredictionRow } from "../queries.js";
 export interface NowData {
   daysToRace: number;
   latestPrediction: PredictionRow | null;
+  fitness: FitnessRow | null;
   snapshot: RecentSnapshot;
   latestActivityDate: Date | null;
   races: RaceRow[];
@@ -59,6 +60,18 @@ export function renderNow(d: NowData): string {
 
   <h2>Current prediction</h2>
   ${prediction}
+
+  <h2>Fitness (Banister)</h2>
+  ${
+    d.fitness
+      ? `<div class="cards">
+    <div class="card"><div class="v">${d.fitness.ctl.toFixed(1)}</div><div class="k">CTL — running fitness</div></div>
+    <div class="card"><div class="v">${d.fitness.atl.toFixed(1)}</div><div class="k">ATL — fatigue (all sports)</div></div>
+    <div class="card"><div class="v">${d.fitness.tsb.toFixed(1)}</div><div class="k">TSB — form</div></div>
+  </div>
+  <p class="sub">as of ${esc(d.fitness.day)} · rebuild after each sync: <code>npm run fitness:rebuild</code></p>`
+      : `<p class="empty">No fitness state yet — run <code>npm run fitness:rebuild</code>.</p>`
+  }
 
   <h2>Last ${s.days} days — raw training</h2>
   <div class="cards">
