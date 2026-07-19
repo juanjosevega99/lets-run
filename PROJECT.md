@@ -154,9 +154,17 @@ Anthropic SDK. No heavy framework until it hurts — plain SQL migrations, no OR
 
 This project exists as much to **stop outsourcing my thinking** as it does to learn AI.
 
-- **AI-free zone:** domain design and the entire deterministic layer (F1) get written by hand, autocomplete off.
-- **AI-OK zone:** boilerplate, ingestion, tests, infra, code review.
-- AI may **critique** my code; it does not produce it in the AI-free zone.
+> **AMENDED 2026-07-19 (owner decision):** the AI-free zone is **removed**. With ~9 months
+> to race day, shipping a working v1.0 beats the hand-writing exercise — the training
+> clock outranks the learning clock. Claude now writes the deterministic layer too, with
+> the compensating controls below. Original rule kept for the record:
+> ~~AI-free zone: domain design and the entire deterministic layer (F1) get written by
+> hand, autocomplete off. AI may critique my code; it does not produce it there.~~
+
+- **Compensating controls, since AI writes the math now:** every model cites its source
+  formula in comments; every module has unit tests against published reference values;
+  and the F2 backtest remains the only judge that matters — no model ships to the
+  dashboard without its error report against my real races.
 - Weekly: 30 min writing what I learned and what I decided, in `DECISIONS.md` (in English).
 
 ## 10. Risks

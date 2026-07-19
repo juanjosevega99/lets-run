@@ -12,21 +12,29 @@
 
 The shift from `PROJECT.md`: it's no longer a predictor with a plan attached. The prediction is the *engine*; the product is the **weekly decision** it drives.
 
-### The target (added 2026-07-18)
+### The target (added 2026-07-18, refined with category data)
 
-Not just "a predicted time" — a **gap to a number that matters**. 2026 21K podium:
+Not just "a predicted time" — a **gap to a number that matters**.
 
-| place | time | pace |
+I race **Varones 18-29** (born 1999 → 28 on 31 Dec 2027, the event's age-reference date).
+That bracket is *thin*, and it changes the goal. 2026 21K, my category:
+
+| target | time | note |
 |---|---|---|
-| 1st M (30-39) | 1:32:36 | ~4:23/km |
-| 2nd M | 1:37:14 | ~4:37/km |
-| 3rd M | 1:39:24 | ~4:42/km |
+| **Win 18-29** | **1:37:14** | Elian Tornikoski — also 2nd overall |
+| 2nd 18-29 | 1:59:08 | 22-minute gap back to 1st |
+| 3rd 18-29 | 2:00:15 | |
 
-**Goal: podium. Stretch: win.** Reference point — my 2022 peak road halves were 1:38-1:40
-(~4:39-4:44/km), i.e. peak-me was already at roughly 3rd-place pace *on road*. Trail costs a
-little more, so podium means returning to peak **and exceeding it**, in ~9 months, from
-currently detrained. Winning needs ~5-7 min beyond anything I've ever run — chase it only if
-the build overdelivers.
+Overall reference: 1st 1:32:36 (30-39 bracket), 3rd overall 1:39:24. 163 finishers.
+
+**Goal: win my category (~sub-1:37).** My 2022 peak road halves were 1:38-1:40 — within a
+couple of minutes of the bracket win — and that was at **age 23**; at 28 I'm entering prime
+endurance years, not leaving them. **Category podium (~sub-2:00) is very likely** even well
+short of peak. Overall podium (~1:39) is the stretch; overall win (1:32:36) is not the plan.
+
+**Risk — thin bracket, high variance.** That 1:37:14 was a single outlier; the rest of the
+bracket was 1:59+. If two fast under-30s enter in 2027 the bar jumps. **Train for sub-1:37,
+not for last year's field.**
 
 **Product consequence:** every prediction is shown **against the target**, and F-A's ROI is
 measured as *gap closed*, not vague improvement.
@@ -177,15 +185,19 @@ Holding the line from `PROJECT.md` §5, restated because "go big" is exactly whe
 - [ ] How is uncertainty shown on *Now*? (band, range, confidence label?)
 - [ ] Frontend stack for Apple-grade feel — and confirm it doesn't drag me into P-D before P-A/P-B are done.
 - [ ] Does the control loop run on a schedule (Monday job) or on-demand when I open the app?
-- [ ] **Which podium — overall or age-group?** Changes the target time materially. The 2026
-      overall winner was in the 30-39 bracket, so that group is competitive; other brackets
-      are usually softer. Also worth pulling 2024/2025 winning times to see how much the bar
-      actually moves year to year (small field = real variance).
+- [x] ~~Which podium — overall or age-group?~~ **RESOLVED 2026-07-18:** age-group, Varones
+      18-29. Target = win the bracket, sub-1:37. See §0 "The target".
+- [ ] Pull 2024/2025 **18-29 category** times to gauge how much the bracket bar actually moves
+      year to year — 2026 had one 1:37 outlier and a 22-min gap to 2nd, so a single sample is
+      a shaky basis for a goal. (Cronolap/RaceResult are JS portals; needs a browser, not a
+      plain fetch.)
 
 ---
 
 ## 8. Process rules (still in force)
 
-`PROJECT.md` §9 anti-atrophy rules carry over verbatim, with one addition specific to this doc:
+`PROJECT.md` §9 anti-atrophy rules carry over — **as amended 2026-07-19: the AI-free zone
+is removed by owner decision** (see PROJECT.md §9 for the record and the compensating
+controls: sourced formulas, reference-value tests, and the F2 backtest as the only judge).
 
-- **The sensitivity-analysis core (P-A) is AI-free.** It's the intellectual heart of the whole product. If I let Claude Code write it while I skim the diff, I built nothing and learned nothing. Hand-written, autocomplete off. AI reviews it after.
+- ~~The sensitivity-analysis core (P-A) is AI-free.~~ Superseded by the same amendment.

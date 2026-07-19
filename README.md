@@ -31,8 +31,35 @@ gives them reliably.
 Idempotent on (name, date) — edit the CSV and re-import to update in place. Bad rows fail
 loudly with the line number rather than silently shrinking the set.
 
+## Backtest (F2)
+
+```
+npm run backtest
+```
+
+Runs every predictor registered in `src/backtest/registry.ts` against the race set,
+feeding each one only pre-race data, and reports per-race error + MAE against the S1
+target (< 3%). Every prediction is persisted to `prediction_log` with its data cutoff.
+The registry is empty until the hand-written deterministic layer (F1) exists — the
+harness will tell you exactly that.
+
+## Dashboard
+
+```
+npm run web        # http://localhost:3000
+```
+
+Three screens (PRD F-C, functional-not-polished): **Now** (countdown, bracket target,
+prediction w/ gap-to-target, last-28-days raw training), **This week** (logged vs
+planned), **Trajectory** (weekly volume vs the 2021-22 peak average, predictions over
+time). Set `DASHBOARD_PASSWORD` to enable the single-user auth gate — required before
+deploying anywhere public. `DASHBOARD_TZ` (default `America/Bogota`) controls week
+bucketing.
+
 ## Development
 
 - `npm test` — unit tests
 - `npm run typecheck`
-- `src/deterministic/` is the hand-written AI-free zone (PROJECT.md §9).
+- `src/deterministic/` is the hand-written AI-free zone (PROJECT.md §9). The backtest
+  harness and dashboard are built around that hole on purpose: write a predictor,
+  register it, and both light up.

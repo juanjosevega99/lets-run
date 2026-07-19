@@ -15,7 +15,8 @@
     "profile": "tsx src/profile/cli.ts",
     "web": "tsx src/web/server.ts",
     "strava:auth": "tsx src/strava/authCli.ts",
-    "strava:sync": "tsx src/strava/syncCli.ts"
+    "strava:sync": "tsx src/strava/syncCli.ts",
+    "backtest": "tsx src/backtest/run.ts"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.171.0",

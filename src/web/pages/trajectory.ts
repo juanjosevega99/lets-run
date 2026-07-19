@@ -1,0 +1,55 @@
+import { barChart } from "../svg.js";
+import { formatDuration } from "../../lib/time.js";
+import { esc } from "../html.js";
+import { RACE } from "../target.js";
+import type { WeekVolume, PredictionRow } from "../queries.js";
+
+/**
+ * PRD F-C screen 3, "Trajectory": weekly running volume vs the 2021-22 peak-era average
+ * (the rebuild gap, visible), and predicted-time-over-time once live predictions exist.
+ */
+export interface TrajectoryData {
+  weeks: WeekVolume[];
+  peakAvgKm: number | null;
+  predictions: PredictionRow[];
+}
+
+export function renderTrajectory(d: TrajectoryData): string {
+  const chart = barChart({
+    bars: d.weeks.map((w) => ({ label: w.weekStart.slice(5), value: w.km })),
+    refLine:
+      d.peakAvgKm != null
+        ? { value: d.peakAvgKm, label: `2021-22 avg ${d.peakAvgKm.toFixed(0)} km/wk` }
+        : undefined,
+    valueUnit: "km",
+  });
+
+  const predictions =
+    d.predictions.length === 0
+      ? `<p class="empty">Empty until F1 + F2 exist. Every live prediction lands in
+         <code>prediction_log</code>; this chart then shows the projected time converging
+         (or not) on ${formatDuration(RACE.targetTimeS)} — the honest "am I on track" view.</p>`
+      : `<table>
+      <thead><tr><th>date</th><th class="num">predicted</th><th class="num">P10–P90</th><th>model</th></tr></thead>
+      <tbody>${d.predictions
+        .map((p) => {
+          const band =
+            p.intervalP10S != null && p.intervalP90S != null
+              ? `${formatDuration(p.intervalP10S)}–${formatDuration(p.intervalP90S)}`
+              : "";
+          return `<tr><td>${p.predictedAt.toISOString().slice(0, 10)}</td><td class="num">${formatDuration(p.predictedTimeS)}</td><td class="num">${band}</td><td><code>${esc(p.predictor)}</code></td></tr>`;
+        })
+        .join("")}</tbody>
+    </table>`;
+
+  return `
+  <h1>Trajectory</h1>
+
+  <h2>Weekly running volume (last ${d.weeks.length} weeks)</h2>
+  ${chart}
+  <p class="sub">Dashed line = average running week across 2021-22, the era of the 1:38-1:40
+  halves. The gap between the bars and that line is the rebuild, made visible.</p>
+
+  <h2>Predicted race time over time</h2>
+  ${predictions}`;
+}

@@ -25,43 +25,66 @@ enough for a strong podium attempt, not enough to bank on winning (see §3).
 - PROJECT.md decisions closed: Supabase; empirical-quantile confidence intervals;
   simple hosted auth-gated website (not PWA/native)
 
-**Not started:** F1 (deterministic layer) — the critical path. Everything else waits on it.
+**Built 2026-07-18 (the "everything around the F1 hole" session):**
+- **PRD §4 data model** — migration 003: `fitness_state`, `plan_week`, `week_review`,
+  `prediction_log` (dimension columns nullable pending the PRD §7 CRUX).
+- **F2 backtest harness** (`src/backtest/`) — `npm run backtest`. Feeds each registered
+  predictor only pre-race data (leak-proof cutoff), scores vs official times, prints
+  per-race error + MAE vs the S1 <3% target + empirical error quantiles, persists every
+  prediction to `prediction_log`. Registry (`src/backtest/registry.ts`) is empty on
+  purpose — F1 plugs in there.
+- **Dashboard v2** (`npm run web`) — the PRD's three screens on live data: *Now*
+  (countdown, bracket target + benchmarks, prediction slot w/ gap-to-target, last-28-days
+  raw training), *This week* (logged vs planned), *Trajectory* (52 zero-filled weeks vs
+  the 2021-22 avg reference — 28 of the last 52 weeks are zero running; the chart shows
+  it honestly). Optional `DASHBOARD_PASSWORD` basic-auth gate (deploy prerequisite, §11).
+- 73 tests passing; verified live end-to-end (auth 401s, all routes, real data).
+
+**Not started:** F1 — still the critical path, still hand-written.
 
 ## 2. The critical path, in order
 
 ```
-F1 (hand-written)  ->  F2 backtest GATE  ->  PRD P-A ... P-E
+F1 (hand-written)  ->  register in src/backtest/registry.ts  ->  npm run backtest  ->  GATE  ->  PRD P-A...
 ```
 
 **F1 — the AI-free zone. Suggested order (simplest first):**
-1. **Riegel** — one formula, immediately testable against the 8 imported races.
-   Predict the 2022 half from a 2022 10K and compare. Fastest possible first win.
-2. **Banister** CTL/ATL/TSB — answers "what shape am I in today". Needs the
-   per-activity stress-score fallback hierarchy (PROJECT.md §6).
+1. **Riegel** — one formula. Implement the harness's `Predictor` contract
+   (`src/backtest/types.ts` — reshape that contract freely if your design wants a
+   different shape; it's a socket, not a spec), register it, `npm run backtest`, and the
+   error report + dashboard prediction slot light up the same minute.
+2. **Banister** CTL/ATL/TSB — "what shape am I in today". Needs the stress-score
+   fallback hierarchy (PROJECT.md §6). Writes `fitness_state` rows (a thin rebuild
+   runner is AI-OK plumbing — ask when ready).
 3. **VDOT / Daniels** — race time → capacity → training paces.
-4. **GAP / Minetti** — do last. Now known to be a *smaller* lever than assumed (see §4).
+4. **GAP / Minetti** — do last; smaller lever than assumed (see §4).
 
 **F2 is still the gate.** If backtest error is bad, no amount of PRD cleverness saves it.
 
-## 3. Competitive target (new goal: win / podium)
+## 3. Competitive target — WIN THE 18-29 BRACKET
 
-2026 21K results — the benchmark to beat:
+Category: **Varones 18-29** (born 1999 → 28 on 31 Dec 2027, the event's age-reference date).
+The bracket is thin, which makes the goal far more attainable than the overall times suggest.
 
-| place | time | pace |
+2026 21K, Varones 18-29 (163 finishers overall):
+
+| cat. place | time | note |
 |---|---|---|
-| 1st M (30-39) | 1:32:36 | ~4:23/km |
-| 2nd M | 1:37:14 | ~4:37/km |
-| 3rd M | 1:39:24 | ~4:42/km |
-| 1st F (30-39) | 1:37:55 | ~4:39/km |
+| **1st** | **1:37:14** | Elian Tornikoski — also 2nd overall |
+| 2nd | 1:59:08 | **22-minute gap** back to 1st |
+| 3rd | 2:00:15 | |
 
-Reference: 2022 peak road halves were **1:38-1:40** (~4:39-4:44/km) — i.e. peak-Juan was at
-roughly 2026's 3rd-place pace, *on road*. Trail costs a bit more, so podium = return to peak
-**and exceed it**. Winning needs ~5-7 min beyond any time ever run. Honest read: **podium =
-stretch but real; win = unlikely in 9 months from current fitness.**
+Overall reference: 1st 1:32:36 (30-39), 3rd overall 1:39:24.
 
-Caveat: one year of data, small field — winning times swing year to year. Worth pulling
-2024/2025 winning times to see the actual spread (result portals are JS-based; needs the
-browser, not a plain fetch).
+Reference: 2022 peak road halves were **1:38-1:40**, at **age 23**. At 28 he's entering prime
+endurance years. Honest read:
+- **Category podium (~sub-2:00): very likely**, even well short of peak.
+- **Category win (~sub-1:37): a realistic 9-month goal** — peak-Juan was within ~2 min of it.
+- Overall podium (~1:39) = stretch. Overall win (1:32:36) = not the plan.
+
+**Risk:** thin bracket, high variance — the 1:37 was one outlier, the rest of the bracket was
+1:59+. Train for **sub-1:37**, not for last year's field. Worth pulling 2024/2025 18-29 times
+to see the real spread (JS portals — use the browser, not a plain fetch).
 
 ## 4. Course reality (settled — stop re-litigating)
 
