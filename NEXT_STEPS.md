@@ -64,6 +64,49 @@ too, so `npm run plan` can't over-prescribe either.
 **Remaining gap:** `thresholdSecPerKm` is still peak-VDOT-derived. Harmless today (aerobic_base
 weeks contain no threshold work) but must be fixed before the limiter reaches `threshold`.
 
+## 2.6 Dashboard actions — CLI/web split CLOSED 2026-07-19
+
+`POST /actions/refresh` runs sync → fitness → plan in one call (~8s), driven by a
+**Sync & replan** button in the dashboard header. CLIs and the button share the exact
+same code: `src/strava/sync.ts`, `src/fitness/rebuild.ts`, `src/plan/freePlan.ts` each
+export a core function taking `(sql, log)`; the `*Cli.ts` files are thin wrappers.
+Orchestration in `src/pipeline/refresh.ts`. POST-only (a stray GET can't mutate data),
+single-flight guard against concurrent runs, per-step failure isolation. All UI hints
+now point at the button rather than npm commands.
+
+**Still CLI-only** (intentionally — rare/one-off): `backtest`, `predict`, `plan` (LLM),
+`ingest:export`, `races:import`, `races:link`, `strava:auth`, `migrate`.
+
+## 2.7 How the model decides a week (analysis, 2026-07-19)
+
+Chain: **fitness_state (Banister) → limiter → volume → template → validator**.
+
+1. `findLimiter()`, priority-ordered: CTL < 60% of peak → `aerobic_base`; longest run
+   < 60% of race distance → `long_endurance`; quality share < 8% → `threshold`; else
+   `race_specific`.
+2. Volume: `previousWeekKm × progression`, where progression is fatigue-aware —
+   TSB < −20 → ×1.0 (flat), TSB < −10 → ×1.05, else ×1.10.
+3. Template: base/long-endurance → all-easy (30% long run); threshold/race-specific →
+   one high day (18%) + long run (28%).
+4. S2 validator gates it; a failure is a template bug, not something to patch around.
+
+**24-week projection if he follows every week** (simulated): 12 → 33 km/wk, CTL 0.6 →
+41.9, TSB self-stabilizes ≈ −10 to −12 (the fatigue-aware progression naturally throttles
+to ×1.05). Limiter stays `aerobic_base` the whole time — it flips at CTL > 42.4 (60% of
+peak 70.6), i.e. **around week 25**. That's coherent coaching (rebuild base first), not a
+bug — but it means the plan's *character* won't change for ~6 months.
+
+**Two real gaps found:**
+- **`qualityShare28d` is hardcoded to `1`** in `plan/context.ts`, so the `threshold`
+  limiter can *never* fire. The progression will jump `long_endurance` → `race_specific`,
+  skipping a threshold block entirely. Needs per-session intensity classification.
+- **PRD F-B (the control loop) is not built.** Week-to-week adaptation today is
+  *implicit only* — via actual logged volume (`previousWeekKm`) and actual fatigue (TSB).
+  The system does **not** compare planned vs actual, does not compute compliance, does not
+  know whether a missed session was the KEY one or a filler, and never writes `week_review`
+  (table exists, unused). No PROGRESS/REPEAT/DELOAD decision exists. **This is the single
+  biggest gap between the app and the PRD.**
+
 ## 3. Pending on Juan
 
 - [ ] **First real week is live** (`npm run plan:free`, week of 2026-07-20): 12km total,

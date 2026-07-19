@@ -90,9 +90,10 @@ describe("renderNow fitness", () => {
     expect(html).toContain("CTL — running fitness");
     expect(html).toContain("-8.7");
   });
-  it("prompts for the rebuild when fitness_state is empty", () => {
+  it("points at the refresh button (not a CLI command) when fitness_state is empty", () => {
     const html = renderNow(nowData({ fitness: null }));
-    expect(html).toContain("fitness:rebuild");
+    expect(html).toContain("Sync &amp; replan");
+    expect(html).not.toContain("npm run"); // the UI must not tell the user to use the CLI
   });
 });
 

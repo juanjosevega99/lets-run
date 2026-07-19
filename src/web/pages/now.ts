@@ -34,7 +34,7 @@ export function renderNow(d: NowData): string {
 
   const s = d.snapshot;
   const freshness = d.latestActivityDate
-    ? `${esc(isoDate(d.latestActivityDate))} — sync newer training with <code>npm run strava:sync</code>`
+    ? `${esc(isoDate(d.latestActivityDate))} — press <strong>Sync &amp; replan</strong> above to pull newer training`
     : "no activities ingested";
 
   const raceRows = d.races
@@ -69,8 +69,8 @@ export function renderNow(d: NowData): string {
     <div class="card"><div class="v">${d.fitness.atl.toFixed(1)}</div><div class="k">ATL — fatigue (all sports)</div></div>
     <div class="card"><div class="v">${d.fitness.tsb.toFixed(1)}</div><div class="k">TSB — form</div></div>
   </div>
-  <p class="sub">as of ${esc(d.fitness.day)} · rebuild after each sync: <code>npm run fitness:rebuild</code></p>`
-      : `<p class="empty">No fitness state yet — run <code>npm run fitness:rebuild</code>.</p>`
+  <p class="sub">as of ${esc(d.fitness.day)}</p>`
+      : `<p class="empty">No fitness state yet — press <strong>Sync &amp; replan</strong> above.</p>`
   }
 
   <h2>Last ${s.days} days — raw training</h2>

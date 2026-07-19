@@ -1,22 +1,24 @@
-import "dotenv/config";
-import { connect } from "../db.js";
+import type { Sql } from "../db.js";
 import { activityStress, isRunning, type AthleteHrProfile } from "../deterministic/stress.js";
 import { banisterSeries, fillDays } from "../deterministic/banister.js";
 import { vdotFromRace } from "../deterministic/vdot.js";
 import { dateOnly, isoDate } from "../lib/time.js";
+import type { Log } from "../strava/sync.js";
 
 /**
  * Rebuilds the fitness_state table (PRD §4) from scratch: stress hierarchy per
  * activity → daily loads → Banister CTL/ATL/TSB series → bulk upsert. Idempotent;
- * re-run after every sync. Prints today's state.
+ * re-run after every sync.
  *
  *   npm run fitness:rebuild
+ *
+ * Core is exported so the dashboard's refresh button runs the identical code path.
+ * Does NOT close `sql` — the caller owns the connection.
  */
 const MODEL_VERSION = "banister-v1";
 
-async function main() {
-  const sql = connect();
-  try {
+export async function rebuildFitness(sql: Sql, log: Log): Promise<void> {
+  {
     const activities = await sql<
       {
         sport_type: string;
@@ -30,7 +32,7 @@ async function main() {
     >`select sport_type, start_date, moving_time_s, elapsed_time_s, distance_m, avg_hr, max_hr
       from activities order by start_date`;
     if (activities.length === 0) {
-      console.log("no activities — ingest first");
+      log("no activities — ingest first");
       return;
     }
 
@@ -90,18 +92,11 @@ async function main() {
     }
 
     const today = series.at(-1)!;
-    console.log(`fitness_state rebuilt: ${series.length} days (${MODEL_VERSION})`);
-    console.log(`stress methods: trimp ${methods.trimp} · pace ${methods.pace} · flat ${methods.flat}`);
-    console.log(`hr profile: max ${hr.hrMax}, rest ${hr.hrRest} · reference VDOT ${refVdot.toFixed(1)}`);
-    console.log(
+    log(`fitness rebuilt: ${series.length} days (${MODEL_VERSION})`);
+    log(`stress methods: trimp ${methods.trimp} · pace ${methods.pace} · flat ${methods.flat}`);
+    log(
       `today: CTL ${today.ctl.toFixed(1)} (running fitness) · ATL ${today.atl.toFixed(1)} (fatigue) · TSB ${today.tsb.toFixed(1)} (form)`,
     );
-  } finally {
-    await sql.end();
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});

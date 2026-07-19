@@ -18,7 +18,7 @@
     "strava:sync": "tsx src/strava/syncCli.ts",
     "backtest": "tsx src/backtest/run.ts",
     "races:link": "tsx src/ingest/racesLink.ts",
-    "fitness:rebuild": "tsx src/fitness/rebuild.ts",
+    "fitness:rebuild": "tsx src/fitness/rebuildCli.ts",
     "predict": "tsx src/predict/cli.ts",
     "plan": "tsx src/plan/cli.ts",
     "tomorrow": "tsx src/plan/tomorrow.ts",

@@ -36,8 +36,8 @@ export function renderWeek(d: WeekData): string {
 
   const planned = d.plan
     ? renderPlan(d.plan)
-    : `<p class="empty">No plan yet — generate one with <code>npm run plan</code>
-       (needs Anthropic credentials; the S2 validator gates every plan).</p>`;
+    : `<p class="empty">No plan yet — press <strong>Sync &amp; replan</strong> above.
+       Every plan is gated by the hard-rule validator before it's shown.</p>`;
 
   return `
   <h1>This week</h1>

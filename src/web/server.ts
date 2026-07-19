@@ -4,6 +4,7 @@ import { connect } from "../db.js";
 import { layout } from "./layout.js";
 import { isAuthorized } from "./auth.js";
 import { RACE, daysToRace } from "../lib/race.js";
+import { runRefresh } from "../pipeline/refresh.js";
 import {
   allRaces,
   dashboardTz,
@@ -32,6 +33,13 @@ const PORT = Number(process.env.PORT ?? 3000);
 const PASSWORD = process.env.DASHBOARD_PASSWORD;
 const sql = connect();
 
+/**
+ * Guards against concurrent refreshes — the pipeline writes to activities /
+ * fitness_state / plan_week, and two overlapping runs would race on all three.
+ * In-memory is sufficient: single user, single process.
+ */
+let refreshInFlight = false;
+
 const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   if (PASSWORD && !isAuthorized(req.headers.authorization, PASSWORD)) {
     res.writeHead(401, {
@@ -43,6 +51,35 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   }
 
   const path = (req.url ?? "/").split("?")[0];
+
+  // The one write endpoint: sync → fitness → plan. POST only, so a stray GET
+  // (prefetch, crawler, refresh) can never mutate training data.
+  if (path === "/actions/refresh") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "content-type": "application/json", allow: "POST" });
+      res.end(JSON.stringify({ ok: false, error: "POST required" }));
+      return;
+    }
+    if (refreshInFlight) {
+      res.writeHead(409, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "a refresh is already running" }));
+      return;
+    }
+    refreshInFlight = true;
+    try {
+      const result = await runRefresh(sql);
+      res.writeHead(result.ok ? 200 : 500, { "content-type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      console.error(err);
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+    } finally {
+      refreshInFlight = false;
+    }
+    return;
+  }
+
   try {
     const body = await route(path ?? "/");
     if (body === null) {
