@@ -14,6 +14,7 @@ function baseInput(overrides: Partial<WeekTemplateInput> = {}): WeekTemplateInpu
     trainingPhase: "base",
     previousWeekKm: 20,
     tsb: -5,
+    aerobicTsb: 0,
     totalAtl: 10,
     totalTsb: 0,
     previousDecision: null,
@@ -121,7 +122,7 @@ describe("buildWeekTemplate — behavior", () => {
     expect(totalRunKm(progressed)).toBeGreaterThan(20);
   });
 
-  it("lets fatigue and a DELOAD decision override earned progression", () => {
+  it("lets running/aerobic fatigue and a DELOAD decision override earned progression", () => {
     const fatigued = buildWeekTemplate(
       baseInput({ previousWeekKm: 20, tsb: -25, previousDecision: "PROGRESS" }),
     );
@@ -129,9 +130,14 @@ describe("buildWeekTemplate — behavior", () => {
     expect(totalRunKm(fatigued)).toBeGreaterThan(17);
 
     const crossTrainingFatigued = buildWeekTemplate(
-      baseInput({ previousWeekKm: 20, tsb: 0, totalTsb: -30, previousDecision: "PROGRESS" }),
+      baseInput({ previousWeekKm: 20, tsb: 0, aerobicTsb: -30, totalTsb: -30, previousDecision: "PROGRESS" }),
     );
     expect(totalRunKm(crossTrainingFatigued)).toBeLessThanOrEqual(18);
+
+    const gymOnlyLoad = buildWeekTemplate(
+      baseInput({ previousWeekKm: 20, tsb: 0, aerobicTsb: 0, totalTsb: -30, previousDecision: "PROGRESS" }),
+    );
+    expect(totalRunKm(gymOnlyLoad)).toBeGreaterThan(20);
 
     const deload = buildWeekTemplate(
       baseInput({ previousWeekKm: 20, tsb: 0, previousDecision: "DELOAD" }),
@@ -269,10 +275,10 @@ describe("buildWeekTemplate — return-to-run and gym calendar", () => {
     expect(sessions.some((s) => s.intensity === "rest")).toBe(true);
   });
 
-  it("reduces gym work when whole-program load is deeply negative", () => {
+  it("does not infer gym readiness from whole-program load alone", () => {
     const plan = buildWeekTemplate(baseInput({ totalTsb: -30, strengthDays: [0], lowerBodyStrengthDays: [0] }));
     const gym = plan.support_sessions.find((s) => s.title === "Lower-body strength");
-    expect(gym?.description).toContain("cut volume");
-    expect(gym?.description).toContain("3 reps in reserve");
+    expect(gym?.description).toContain("report unusual leg soreness");
+    expect(gym?.description).not.toContain("cut volume");
   });
 });

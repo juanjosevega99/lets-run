@@ -1,3 +1,5 @@
+import { dateInTimeZone } from "./time.js";
+
 /**
  * The competitive target — display constants sourced from PRD §0 "The target".
  * If the PRD numbers change (e.g. after pulling 2024/2025 bracket data), update BOTH.
@@ -17,7 +19,13 @@ export const RACE = {
   ],
 } as const;
 
-export function daysToRace(now: Date): number {
-  const race = new Date(`${RACE.dateIso}T00:00:00Z`);
-  return Math.ceil((race.getTime() - now.getTime()) / 86_400_000);
+export function daysToRace(
+  now: Date,
+  timeZone: string = process.env.DASHBOARD_TZ ?? "America/Bogota",
+): number {
+  // This is a calendar countdown, not an elapsed-hours countdown. Using the raw
+  // instant made the app lose a day at 19:00 Bogotá time when UTC crossed midnight.
+  const today = Date.parse(`${dateInTimeZone(now, timeZone)}T00:00:00Z`);
+  const race = Date.parse(`${RACE.dateIso}T00:00:00Z`);
+  return Math.ceil((race - today) / 86_400_000);
 }

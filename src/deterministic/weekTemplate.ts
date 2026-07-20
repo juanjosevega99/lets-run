@@ -37,7 +37,10 @@ export interface WeekTemplateInput {
   trainingPhase: TrainingPhase;
   previousWeekKm: number | null;
   tsb: number;
+  /** Run + aerobic cross-training balance; may guard running after unusually heavy aerobic work. */
+  aerobicTsb?: number | null;
   totalAtl?: number | null;
+  /** Whole-program context only. Generic gym duration is not a readiness measurement. */
   totalTsb?: number | null;
   previousDecision: WeekDecision | null;
   runDays: number[];
@@ -250,17 +253,12 @@ function calendarSupport(
   const sessions = [...running];
   for (const day of x.strengthDays) {
     const lower = x.lowerBodyStrengthDays.includes(day);
-    const overloaded = x.totalTsb != null && x.totalTsb < -25;
     sessions.push({
       day,
       title: lower ? "Lower-body strength" : "Strength training",
-      description: overloaded
-        ? lower
-          ? "Recovery-adjusted lower-body session: cut volume, keep at least 3 reps in reserve, and skip it if leg soreness persists."
-          : "Recovery-adjusted gym: favor upper body/mobility, reduce volume, and keep at least 3 reps in reserve."
-        : lower
-          ? "Configured lower-body gym session — keep the following run easy and report leg soreness."
-          : "Usual gym session (inferred from recent history unless configured).",
+      description: lower
+        ? "Configured lower-body gym session — report unusual leg soreness or pain so the next run can adapt."
+        : "Usual gym session (inferred from recent history unless configured).",
       intensity: "low",
       planned_km: 0,
     });
@@ -287,7 +285,10 @@ function easyEffort(x: WeekTemplateInput): string {
 
 function progressionFor(x: WeekTemplateInput): number {
   if (x.trainingPhase === "taper") return 0.75;
-  if (x.tsb < -20 || (x.totalTsb != null && x.totalTsb < -25)) return 0.9;
+  // Generic gym duration contributes to totalTsb but cannot tell us whether the
+  // runner's legs are ready. Running/aerobic balance may guard progression; gym
+  // only does so later through an explicit DELOAD/red flag or readiness signal.
+  if (x.tsb < -20 || (x.aerobicTsb != null && x.aerobicTsb < -25)) return 0.9;
   switch (x.previousDecision) {
     case "PROGRESS":
       return 1.05;

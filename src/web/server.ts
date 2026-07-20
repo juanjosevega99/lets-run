@@ -23,7 +23,7 @@ import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
 
 /**
- * The dashboard (PRD F-C, functional-not-polished): three screens over live data.
+ * The athlete dashboard: overview, adaptive weekly plan, and progress.
  *
  *   npm run web            # http://localhost:3000
  *
@@ -101,12 +101,13 @@ async function route(path: string): Promise<string | null> {
   const now = new Date();
   switch (path) {
     case "/": {
-      const [predictions, fitness, snapshot, latest, races] = await Promise.all([
+      const [predictions, fitness, snapshot, latest, races, plan] = await Promise.all([
         livePredictions(sql),
         latestFitness(sql),
         recentSnapshot(sql, 28),
         latestActivityDate(sql),
         allRaces(sql),
+        latestPlan(sql),
       ]);
       return layout(
         "lets-run · now",
@@ -118,6 +119,7 @@ async function route(path: string): Promise<string | null> {
           snapshot,
           latestActivityDate: latest,
           races,
+          plan,
           now,
           tz: dashboardTz(),
         }),

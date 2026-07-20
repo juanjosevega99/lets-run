@@ -22,6 +22,7 @@ export interface PlanContext {
   atl: number;
   tsb: number;
   aerobicCtl: number | null;
+  aerobicTsb: number | null;
   totalAtl: number | null;
   totalTsb: number | null;
   previousWeekKm: number | null;
@@ -99,6 +100,8 @@ Structure: exactly one key session (the limiter-targeting session — intensity 
 or, for pure base/long weeks, "low"), plus support sessions. Days: 0=Monday .. 6=Sunday.
 Cross-training/gym may appear as sessions with planned_km 0 and intensity "low". Preserve
 the runner's listed gym days and never guess which are lower-body when not configured.
+Whole-program balance is context only: never reduce running or gym from that number alone;
+only running/aerobic load and explicit soreness, pain, or a prior DELOAD may constrain work.
 The explanation is one short paragraph: why THIS week, tied to the limiter and the numbers.`;
 
 export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[]): string {
@@ -109,7 +112,7 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
   lines.push(`- running state: CTL ${ctx.ctl.toFixed(1)}, ATL ${ctx.atl.toFixed(1)}, TSB ${ctx.tsb.toFixed(1)}`);
   if (ctx.aerobicCtl != null || ctx.totalAtl != null) {
     lines.push(
-      `- cross-training context: aerobic CTL ${ctx.aerobicCtl?.toFixed(1) ?? "unknown"}, total acute load ${ctx.totalAtl?.toFixed(1) ?? "unknown"}, total load balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"}`,
+      `- cross-training context: aerobic CTL ${ctx.aerobicCtl?.toFixed(1) ?? "unknown"}, aerobic load balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"}, total acute load ${ctx.totalAtl?.toFixed(1) ?? "unknown"}, whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"} (context only; generic gym duration is not a readiness signal)`,
     );
   }
   lines.push(

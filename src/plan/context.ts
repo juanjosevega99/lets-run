@@ -162,6 +162,10 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
     atl: fitness.atl,
     tsb: fitness.tsb,
     aerobicCtl: fitness.aerobicCtl,
+    aerobicTsb:
+      fitness.aerobicCtl != null && fitness.aerobicAtl != null
+        ? fitness.aerobicCtl - fitness.aerobicAtl
+        : null,
     totalAtl: fitness.totalAtl,
     totalTsb: fitness.totalTsb,
     previousWeekKm,

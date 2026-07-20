@@ -39,7 +39,7 @@ async function main() {
       phase: ctx.trainingPhase,
       limiter: ctx.limiter.limiter,
       runningTsb: ctx.tsb,
-      totalTsb: ctx.totalTsb,
+      aerobicTsb: ctx.aerobicTsb,
       paces: ctx.paces,
       easyHrCeiling: ctx.easyHrCeiling,
       day: isoWeekday,
@@ -59,7 +59,7 @@ function suggest(x: {
   phase: string;
   limiter: string;
   runningTsb: number;
-  totalTsb: number | null;
+  aerobicTsb: number | null;
   paces: { easySecPerKm: number; thresholdSecPerKm: number | null } | null;
   easyHrCeiling: number | null;
   day: number;
@@ -75,11 +75,12 @@ function suggest(x: {
       ? `${easy}/km, conversational`
       : "fully conversational effort";
 
-  // TSB below -20 means real accumulated fatigue (here: two long rides this weekend) —
-  // recovery outranks the limiter regardless of what it is.
-  if ((x.totalTsb ?? x.runningTsb) < -25) {
+  // Running/aerobic imbalance can reflect run/ride/swim fatigue. Whole-program
+  // balance is deliberately excluded: a generic gym-duration estimate alone is
+  // not evidence that running readiness is impaired.
+  if (Math.min(x.runningTsb, x.aerobicTsb ?? x.runningTsb) < -25) {
     return [
-      `Whole-program load is elevated. Keep the prescribed dose reduced and do not add training.`,
+      `Running/aerobic load is elevated. Keep the prescribed dose reduced and do not add training.`,
       x.runDays.includes(x.day)
         ? `If pain-free and legs feel normal: the planned easy run/walk at ${effort}; otherwise rest.`
         : x.strengthDays.includes(x.day)

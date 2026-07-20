@@ -9,6 +9,7 @@ const ctx: PlanContext = {
   atl: 0.1,
   tsb: 0.5,
   aerobicCtl: 3.2,
+  aerobicTsb: 1.8,
   totalAtl: 12.4,
   totalTsb: -8.7,
   previousWeekKm: 20,
@@ -87,8 +88,10 @@ describe("generateWeekPlan (validator retry loop)", () => {
     expect(p).toContain("aerobic_base");
     expect(p).toContain("running state: CTL 0.6, ATL 0.1, TSB 0.5");
     expect(p).toContain("aerobic CTL 3.2");
+    expect(p).toContain("aerobic load balance 1.8");
     expect(p).toContain("total acute load 12.4");
-    expect(p).toContain("total load balance -8.7");
+    expect(p).toContain("whole-program balance -8.7");
+    expect(p).toContain("generic gym duration is not a readiness signal");
     expect(p).toContain("20.0 km (10% rule baseline)");
     expect(p).toContain("6:00/km"); // easy pace
     expect(p).toContain("1:37:14"); // target

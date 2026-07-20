@@ -25,6 +25,7 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     trainingPhase: ctx.trainingPhase,
     previousWeekKm: ctx.previousWeekKm,
     tsb: ctx.tsb,
+    aerobicTsb: ctx.aerobicTsb,
     totalAtl: ctx.totalAtl,
     totalTsb: ctx.totalTsb,
     previousDecision: ctx.previousDecision,
