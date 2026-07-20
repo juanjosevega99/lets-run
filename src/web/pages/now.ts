@@ -19,10 +19,13 @@ const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 export function renderNow(d: NowData): string {
   const p = d.latestPrediction;
-  const gapS = p ? p.predictedTimeS - RACE.targetTimeS : null;
+  // Only present a confident time when the estimate has a current-shape anchor.
+  // An un-anchored estimate extrapolates from an old race and reads far too fast.
+  const showEstimate = p != null && p.reliable;
+  const gapS = showEstimate ? p!.predictedTimeS - RACE.targetTimeS : null;
   const gapLabel =
     gapS == null
-      ? "Waiting for a fresh signal"
+      ? "Estimate resumes with recent running"
       : gapS <= 0
         ? `${formatDuration(-gapS)} ahead of target`
         : `${formatDuration(gapS)} to close`;
@@ -49,7 +52,7 @@ export function renderNow(d: NowData): string {
       <div class="goal-time">${formatDuration(RACE.targetTimeS)}</div>
       <div class="goal-label">${formatPace(RACE.distanceM, RACE.targetTimeS)} average pace</div>
       <div class="hero-metrics">
-        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${p ? formatDuration(p.predictedTimeS) : "Not enough recent running"}</strong>${p && s.runs === 0 ? `<small>Low recent-running signal</small>` : ""}</div>
+        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${showEstimate ? formatDuration(p!.predictedTimeS) : "Not enough recent running"}</strong>${p != null && !p.reliable ? `<small>Estimate paused — build a running base to unlock it</small>` : ""}</div>
         <div class="hero-metric"><span>Gap</span><strong>${gapLabel}</strong></div>
         <div class="hero-metric"><span>Current focus</span><strong>${esc(plan.phase)}</strong></div>
       </div>
@@ -195,9 +198,12 @@ function renderRaceDetails(d: NowData): string {
     .map((race) => `<tr><td>${esc(race.raceDate)}</td><td>${esc(race.name)}</td><td class="num">${race.distanceKm.toFixed(1)}</td><td class="num">${formatDuration(race.officialTimeS)}</td><td>${esc(race.terrain)}</td></tr>`)
     .join("");
   const p = d.latestPrediction;
-  const estimate = p
-    ? `<p class="sub">Estimated Huemul 21K time if raced on ${esc(dateInTimeZone(p.predictedAt, d.tz))}: <strong>${formatDuration(p.predictedTimeS)}</strong>${p.intervalP10S != null && p.intervalP90S != null ? ` · historical error range ${formatDuration(p.intervalP10S)}–${formatDuration(p.intervalP90S)}${p.intervalSampleSize != null ? ` (n=${p.intervalSampleSize})` : ""}` : ""} · model <code>${esc(p.predictor)}</code>. ${d.snapshot.runs === 0 ? "There is no recent running signal, so treat this as a rough baseline. " : ""}This is not a race-day forecast. Body-weight history is not yet tracked or used by this estimate.</p>`
-    : `<p class="sub">The current-shape estimate will appear when there is enough usable running data. The plan remains conservative until then.</p>`;
+  const estimate =
+    p != null && p.reliable
+      ? `<p class="sub">Estimated Huemul 21K time if raced on ${esc(dateInTimeZone(p.predictedAt, d.tz))}: <strong>${formatDuration(p.predictedTimeS)}</strong>${p.intervalP10S != null && p.intervalP90S != null ? ` · historical error range ${formatDuration(p.intervalP10S)}–${formatDuration(p.intervalP90S)}${p.intervalSampleSize != null ? ` (n=${p.intervalSampleSize})` : ""}` : ""} · model <code>${esc(p.predictor)}</code>. This is not a race-day forecast. Body-weight history is not yet tracked or used by this estimate.</p>`
+      : p != null
+        ? `<p class="sub">The current-shape estimate is paused: with no recent running the model would extrapolate from an old race and read far too fast. It resumes once you have a running base to anchor it. This is not a race-day forecast.</p>`
+        : `<p class="sub">The current-shape estimate will appear when there is enough usable running data. The plan remains conservative until then.</p>`;
   return `<details class="details-panel section-block">
     <summary>Estimate and race references</summary>
     <div class="details-body">

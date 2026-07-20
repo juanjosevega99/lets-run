@@ -16,7 +16,8 @@ export function renderTrajectory(d: TrajectoryData): string {
   const currentWeek = visibleWeeks.at(-1) ?? null;
   const completedWeeks = visibleWeeks.slice(0, -1).slice(-4);
   const fourWeekAvg = completedWeeks.length > 0 ? completedWeeks.reduce((sum, week) => sum + week.km, 0) / completedWeeks.length : null;
-  const latestPrediction = d.predictions.at(-1) ?? null;
+  const latest = d.predictions.at(-1) ?? null;
+  const latestPrediction = latest != null && latest.reliable ? latest : null;
   const gapS = latestPrediction ? latestPrediction.predictedTimeS - RACE.targetTimeS : null;
   const chart = barChart({
     bars: visibleWeeks.map((week) => ({ label: week.weekStart.slice(5), value: week.km })),
@@ -69,7 +70,8 @@ function renderPredictionHistory(predictions: PredictionRow[], tz: string): stri
           const band = prediction.intervalP10S != null && prediction.intervalP90S != null
             ? `${formatDuration(prediction.intervalP10S)}–${formatDuration(prediction.intervalP90S)}`
             : "—";
-          return `<tr><td>${dateInTimeZone(prediction.predictedAt, tz)}</td><td class="num">${formatDuration(prediction.predictedTimeS)}</td><td class="num">${band}</td><td><code>${esc(prediction.predictor)}</code></td></tr>`;
+          const shape = prediction.reliable ? formatDuration(prediction.predictedTimeS) : "Paused (no anchor)";
+          return `<tr><td>${dateInTimeZone(prediction.predictedAt, tz)}</td><td class="num">${shape}</td><td class="num">${band}</td><td><code>${esc(prediction.predictor)}</code></td></tr>`;
         })
         .join("")}</tbody>
     </table></div>`;

@@ -95,6 +95,14 @@ Suggested order: **red-team H1+H2+M3 fixes → P0 → F4 → P1 → P1.5.**
 > handoff (measured defects, performance-state model with calibrated CTL bridge,
 > freshness-aware intervals, scenario forecast, tests, runbook). Needs Juan's
 > max-effort/confidence confirmations for the race table (defaults proposed in §3.1).
+>
+> **Interim honesty fix shipped 2026-07-19:** the symptom of defects D1/D2 (an
+> over-optimistic 1:48:37 current-shape estimate off zero running) is now GATED at
+> display. `src/predict/reliability.ts` withholds the number when running CTL ≤ 5
+> (the bridge-saturation floor) or there's no recent running; `live.ts` marks the row
+> `context.reliable=false` and drops its band; Now/Trajectory show "Estimate paused"
+> instead of a false-precise time. The full accuracy rebuild (right anchor + calibrated
+> bridge) is still this P1 spec.
 
 - Keep `current_shape_estimate` separate from a future `race_day_forecast`.
 - Add planned-training / reduced-adherence / maintain-current-load scenarios.

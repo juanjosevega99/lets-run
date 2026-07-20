@@ -281,6 +281,9 @@ export interface PredictionRow {
   intervalP90S: number | null;
   predictor: string;
   intervalSampleSize?: number | null;
+  /** False when the estimate was gated for having no current-shape anchor. Older rows
+   *  (no flag) default to reliable so history is not rewritten retroactively. */
+  reliable: boolean;
 }
 
 /** Live (non-backtest) predictions, oldest first. Empty until F1+F2 exist. */
@@ -293,11 +296,13 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
       interval_p90_s: number | null;
       predictor: string;
       interval_error_n: number | null;
+      reliable: boolean;
     }[]
   >`
     select predicted_at, predicted_time_s, interval_p10_s, interval_p90_s, predictor,
            case when context->>'interval_error_n' ~ '^[0-9]+$'
-                then (context->>'interval_error_n')::int end as interval_error_n
+                then (context->>'interval_error_n')::int end as interval_error_n,
+           (context->>'reliable') is distinct from 'false' as reliable
     from prediction_log
     where race_id is null
       and (
@@ -313,5 +318,6 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
     intervalP90S: r.interval_p90_s,
     predictor: r.predictor,
     intervalSampleSize: r.interval_error_n,
+    reliable: r.reliable,
   }));
 }

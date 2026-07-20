@@ -81,6 +81,7 @@ describe("renderNow", () => {
           intervalP10S: 5900,
           intervalP90S: 6350,
           predictor: "riegel-v1",
+          reliable: true,
         },
       }),
     );
@@ -90,6 +91,26 @@ describe("renderNow", () => {
     expect(html).toContain("riegel-v1");
     expect(html).toContain("1:38:20"); // P10
     expect(html).toContain("Body-weight history is not yet tracked");
+  });
+
+  it("pauses the estimate instead of showing an over-optimistic time when it has no anchor", () => {
+    const html = renderNow(
+      nowData({
+        snapshot: { ...snapshot, runs: 0, runKm: 0, runTimeS: 0, longestRunKm: null },
+        latestPrediction: {
+          predictedAt: new Date("2026-07-18T00:00:00Z"),
+          predictedTimeS: 6517, // the real over-optimistic 1:48:37
+          intervalP10S: null,
+          intervalP90S: null,
+          predictor: "vdot-ctl-v1",
+          reliable: false,
+        },
+      }),
+    );
+    expect(html).not.toContain("1:48:37"); // the misleading number must never render
+    expect(html).toContain("Not enough recent running");
+    expect(html).toContain("Estimate paused");
+    expect(html).toContain("resumes once you have a running base");
   });
 
   it("calls out zero recent running instead of hiding it", () => {
@@ -246,10 +267,31 @@ describe("renderTrajectory", () => {
           intervalP10S: null,
           intervalP90S: null,
           predictor: "riegel-v1",
+          reliable: true,
         },
       ],
     });
     expect(html).toContain("2026-07-31");
     expect(html).toContain("1:43:20");
+  });
+
+  it("shows paused rather than an over-optimistic time for an unanchored estimate", () => {
+    const html = renderTrajectory({
+      weeks: [],
+      peakAvgKm: null,
+      tz: "America/Bogota",
+      predictions: [
+        {
+          predictedAt: new Date("2026-08-01T00:00:00Z"),
+          predictedTimeS: 6517,
+          intervalP10S: null,
+          intervalP90S: null,
+          predictor: "vdot-ctl-v1",
+          reliable: false,
+        },
+      ],
+    });
+    expect(html).not.toContain("1:48:37");
+    expect(html).toContain("Paused (no anchor)");
   });
 });
