@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatPace, isoDate } from "./time.js";
+import { dateInTimeZone, formatDuration, formatPace, isoDate } from "./time.js";
 
 describe("formatDuration", () => {
   it("renders h:mm:ss above an hour and m:ss below", () => {
@@ -24,6 +24,12 @@ describe("formatPace", () => {
     expect(formatPace(null, 100)).toBeNull();
     expect(formatPace(1000, null)).toBeNull();
     expect(formatPace(0, 100)).toBeNull();
+  });
+});
+
+describe("dateInTimeZone", () => {
+  it("uses the athlete-local date instead of UTC", () => {
+    expect(dateInTimeZone(new Date("2026-07-20T03:00:00Z"), "America/Bogota")).toBe("2026-07-19");
   });
 });
 

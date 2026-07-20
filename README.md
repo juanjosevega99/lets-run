@@ -1,6 +1,6 @@
 # lets-run
 
-Race predictor / coach for one user. Read [PROJECT.md](PROJECT.md) first — if a change
+Adaptive race-specific run + strength coach for one user. Read [PROJECT.md](PROJECT.md) first — if a change
 isn't justified there, it doesn't get built.
 
 ## Setup
@@ -49,12 +49,21 @@ harness will tell you exactly that.
 npm run web        # http://localhost:3000
 ```
 
-Three screens (PRD F-C, functional-not-polished): **Now** (countdown, bracket target,
-prediction w/ gap-to-target, last-28-days raw training), **This week** (logged vs
-planned), **Trajectory** (weekly volume vs the 2021-22 peak average, predictions over
-time). Set `DASHBOARD_PASSWORD` to enable the single-user auth gate — required before
-deploying anywhere public. `DASHBOARD_TZ` (default `America/Bogota`) controls week
-bucketing.
+Three screens (PRD F-C, functional-not-polished): **Now** (countdown, truthful
+current-shape estimate, multi-sport load, last-28-days training), **Plan week**
+(prescription and actuals aligned to the same dates), **Trajectory** (weekly volume and
+current-shape estimates over time). The dashboard refresh runs Strava sync → multi-sport
+fitness rebuild → current-shape estimate → completed-week review → next plan.
+
+Coach v2 separates running-specific, combined-aerobic, and whole-program load. It uses
+the race clock only after readiness gates: a long gap selects a three-day, duration-first
+return-to-run week before base/build/specific/taper work. Recurring gym days are inferred;
+configure `ATHLETE_LOWER_BODY_DAYS` in `.env` because Strava's generic strength records
+cannot reveal the split.
+
+Set `DASHBOARD_PASSWORD` to enable the single-user auth gate — required before deploying
+anywhere public. `DASHBOARD_TZ` (default `America/Bogota`) controls activity-day, fitness,
+plan-week, and compliance bucketing.
 
 ## Development
 

@@ -20,7 +20,17 @@ function nowData(overrides: Partial<NowData> = {}): NowData {
   return {
     daysToRace: 280,
     latestPrediction: null,
-    fitness: { day: "2026-07-19", ctl: 0.6, atl: 8.0, tsb: -8.7 },
+    fitness: {
+      day: "2026-07-19",
+      ctl: 0.6,
+      atl: 0.1,
+      tsb: 0.5,
+      aerobicCtl: 3.2,
+      aerobicAtl: 1.4,
+      totalCtl: 3.7,
+      totalAtl: 12.4,
+      totalTsb: -8.7,
+    },
     snapshot,
     latestActivityDate: new Date("2026-07-11T10:00:00Z"),
     races: [
@@ -84,11 +94,14 @@ describe("renderNow", () => {
 });
 
 describe("renderNow fitness", () => {
-  it("shows CTL/ATL/TSB cards", () => {
+  it("shows the run-specific CTL/ATL/TSB values", () => {
     const html = renderNow(nowData());
     expect(html).toContain("0.6");
-    expect(html).toContain("CTL — running fitness");
-    expect(html).toContain("-8.7");
+    expect(html).toContain("chronic running load");
+    expect(html).toContain("0.1");
+    expect(html).toContain("0.5");
+    expect(html).toContain("acute whole-program load");
+    expect(html).toContain("not direct measurements of fitness");
   });
   it("points at the refresh button (not a CLI command) when fitness_state is empty", () => {
     const html = renderNow(nowData({ fitness: null }));
@@ -113,7 +126,7 @@ describe("renderWeek", () => {
         generatedAt: new Date("2026-07-19T00:00:00Z"),
       },
     });
-    expect(html).toContain("week of 2026-07-20");
+    expect(html).toContain("Plan week · 2026-07-20");
     expect(html).toContain("★ Long run");
     expect(html).toContain("aerobic_base");
     expect(html).toContain("Rebuild volume gently.");

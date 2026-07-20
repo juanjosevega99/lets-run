@@ -11,7 +11,7 @@ import { dateOnly } from "../lib/time.js";
  * into the wrong week via UTC.
  */
 
-const RUN_TYPES = ["Run", "Trail Run", "TrailRun"]; // export shows "Run"; API may add trail variants
+const RUN_TYPES = ["Run", "Trail Run", "TrailRun", "VirtualRun"]; // API/export spellings
 
 export function dashboardTz(): string {
   return process.env.DASHBOARD_TZ ?? "America/Bogota";
@@ -133,6 +133,27 @@ export async function thisWeekActivities(sql: Sql): Promise<LoggedActivity[]> {
   }));
 }
 
+/** Activities whose athlete-local date falls inside a specific Monday-start week. */
+export async function activitiesForWeek(sql: Sql, weekStart: string): Promise<LoggedActivity[]> {
+  const tz = dashboardTz();
+  const rows = await sql<
+    { start_date: Date; name: string; sport_type: string; distance_m: number | null; moving_time_s: number | null }[]
+  >`
+    select start_date, name, sport_type, distance_m, moving_time_s
+    from activities
+    where (start_date at time zone ${tz}) >= ${weekStart}::date
+      and (start_date at time zone ${tz}) < (${weekStart}::date + interval '7 days')
+    order by start_date
+  `;
+  return rows.map((r) => ({
+    startDate: r.start_date,
+    name: r.name,
+    sportType: r.sport_type,
+    distanceM: r.distance_m,
+    movingTimeS: r.moving_time_s,
+  }));
+}
+
 export async function latestActivityDate(sql: Sql): Promise<Date | null> {
   const rows = await sql<{ latest: Date | null }[]>`select max(start_date) as latest from activities`;
   return rows[0]?.latest ?? null;
@@ -164,15 +185,45 @@ export interface FitnessRow {
   ctl: number;
   atl: number;
   tsb: number;
+  aerobicCtl: number | null;
+  aerobicAtl: number | null;
+  totalCtl: number | null;
+  totalAtl: number | null;
+  totalTsb: number | null;
 }
 
 /** Today's (latest) Banister state, if the fitness pipeline has run. */
 export async function latestFitness(sql: Sql): Promise<FitnessRow | null> {
-  const rows = await sql<{ day: unknown; ctl: number; atl: number; tsb: number }[]>`
-    select day, ctl, atl, tsb from fitness_state order by day desc limit 1
+  const rows = await sql<
+    {
+      day: unknown;
+      ctl: number;
+      atl: number;
+      tsb: number;
+      aerobic_ctl: number | null;
+      aerobic_atl: number | null;
+      total_ctl: number | null;
+      total_atl: number | null;
+      total_tsb: number | null;
+    }[]
+  >`
+    select day, ctl, atl, tsb, aerobic_ctl, aerobic_atl, total_ctl, total_atl, total_tsb
+    from fitness_state order by day desc limit 1
   `;
   const r = rows[0];
-  return r ? { day: dateOnly(r.day), ctl: r.ctl, atl: r.atl, tsb: r.tsb } : null;
+  return r
+    ? {
+        day: dateOnly(r.day),
+        ctl: r.ctl,
+        atl: r.atl,
+        tsb: r.tsb,
+        aerobicCtl: r.aerobic_ctl,
+        aerobicAtl: r.aerobic_atl,
+        totalCtl: r.total_ctl,
+        totalAtl: r.total_atl,
+        totalTsb: r.total_tsb,
+      }
+    : null;
 }
 
 export interface PlanSessionRow {
@@ -181,6 +232,7 @@ export interface PlanSessionRow {
   description: string;
   intensity: "low" | "high" | "rest";
   planned_km: number;
+  planned_minutes?: number;
 }
 
 export interface PlanRow {
@@ -225,6 +277,7 @@ export interface PredictionRow {
   intervalP10S: number | null;
   intervalP90S: number | null;
   predictor: string;
+  intervalSampleSize?: number | null;
 }
 
 /** Live (non-backtest) predictions, oldest first. Empty until F1+F2 exist. */
@@ -236,11 +289,18 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
       interval_p10_s: number | null;
       interval_p90_s: number | null;
       predictor: string;
+      interval_error_n: number | null;
     }[]
   >`
-    select predicted_at, predicted_time_s, interval_p10_s, interval_p90_s, predictor
+    select predicted_at, predicted_time_s, interval_p10_s, interval_p90_s, predictor,
+           case when context->>'interval_error_n' ~ '^[0-9]+$'
+                then (context->>'interval_error_n')::int end as interval_error_n
     from prediction_log
     where race_id is null
+      and (
+        context->>'canonical' = 'true'
+        or (context->>'canonical' is null and predictor = 'vdot-ctl-v1')
+      )
     order by predicted_at
   `;
   return rows.map((r) => ({
@@ -249,5 +309,6 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
     intervalP10S: r.interval_p10_s,
     intervalP90S: r.interval_p90_s,
     predictor: r.predictor,
+    intervalSampleSize: r.interval_error_n,
   }));
 }

@@ -27,10 +27,10 @@ export function renderTrajectory(d: TrajectoryData): string {
   const predictions =
     d.predictions.length === 0
       ? `<p class="empty">Empty until F1 + F2 exist. Every live prediction lands in
-         <code>prediction_log</code>; this chart then shows the projected time converging
-         (or not) on ${formatDuration(RACE.targetTimeS)} — the honest "am I on track" view.</p>`
+         <code>prediction_log</code>; this chart then shows how the current-shape estimate
+         moves relative to ${formatDuration(RACE.targetTimeS)}. It is not yet a race-day forecast.</p>`
       : `<table>
-      <thead><tr><th>date</th><th class="num">predicted</th><th class="num">P10–P90</th><th>model</th></tr></thead>
+      <thead><tr><th>date</th><th class="num">current shape</th><th class="num">historical error range</th><th>model</th></tr></thead>
       <tbody>${d.predictions
         .map((p) => {
           const band =
@@ -50,6 +50,6 @@ export function renderTrajectory(d: TrajectoryData): string {
   <p class="sub">Dashed line = average running week across 2021-22, the era of the 1:38-1:40
   halves. The gap between the bars and that line is the rebuild, made visible.</p>
 
-  <h2>Predicted race time over time</h2>
+  <h2>Current-shape estimate over time</h2>
   ${predictions}`;
 }

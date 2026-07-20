@@ -1,7 +1,9 @@
 import { validateWeek, type Violation } from "../deterministic/validator.js";
 import type { LimiterResult } from "../deterministic/limiter.js";
+import type { TrainingPhase } from "../deterministic/trainingPhase.js";
 import { formatDuration } from "../lib/time.js";
 import { toValidatorSessions, type GeneratedPlan } from "./schema.js";
+import type { WeekDecision } from "./review.js";
 
 /**
  * F3 plan generation: deterministic layer decides the WHAT (limiter, paces, volume
@@ -15,11 +17,24 @@ export const MAX_ATTEMPTS = 3;
 
 export interface PlanContext {
   limiter: LimiterResult;
+  trainingPhase: TrainingPhase;
   ctl: number;
   atl: number;
   tsb: number;
+  aerobicCtl: number | null;
+  totalAtl: number | null;
+  totalTsb: number | null;
   previousWeekKm: number | null;
   recentWeeklyKm: number[]; // last ~4 weeks, oldest first
+  runs28d: number;
+  activeRunWeeks4: number;
+  daysSinceLastRun: number | null;
+  longestRunKm30d: number;
+  longestRunKm120d: number;
+  qualityShare28d: number;
+  strengthDays: number[];
+  lowerBodyStrengthDays: number[];
+  previousDecision: WeekDecision | null;
   paces: { easySecPerKm: number; thresholdSecPerKm: number } | null;
   /**
    * Where the easy pace came from. "observed" = median pace of recent runs actually
@@ -50,6 +65,8 @@ export async function generateWeekPlan(llm: LlmCall, ctx: PlanContext): Promise<
     violations = validateWeek({
       sessions: toValidatorSessions(plan),
       previousWeekKm: ctx.previousWeekKm,
+      trainingPhase: ctx.trainingPhase,
+      longestRunKm30d: ctx.longestRunKm30d,
     });
     if (violations.length === 0) {
       return { plan, attempts: attempt };
@@ -73,17 +90,39 @@ HARD RULES the week MUST satisfy (a validator rejects violations):
 2. At least one day (0-6) with NO session at all — a full rest day.
 3. At least 75% of total planned km at "low" intensity.
 4. No two "high" intensity sessions on consecutive days.
+5. In return_to_run: exactly three nonconsecutive easy run/walk sessions, no quality
+   work, and no single run more than 10% beyond the recent longest (4km if none).
 
 Structure: exactly one key session (the limiter-targeting session — intensity may be "high"
 or, for pure base/long weeks, "low"), plus support sessions. Days: 0=Monday .. 6=Sunday.
-Cross-training/gym may appear as sessions with planned_km 0 and intensity "low".
+Cross-training/gym may appear as sessions with planned_km 0 and intensity "low". Preserve
+the runner's listed gym days and never guess which are lower-body when not configured.
 The explanation is one short paragraph: why THIS week, tied to the limiter and the numbers.`;
 
 export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[]): string {
   const lines: string[] = [];
   lines.push(`## Current state (deterministic, do not re-derive)`);
+  lines.push(`- training phase: ${ctx.trainingPhase}`);
   lines.push(`- limiter to target: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
-  lines.push(`- fitness: CTL ${ctx.ctl.toFixed(1)}, ATL ${ctx.atl.toFixed(1)}, TSB ${ctx.tsb.toFixed(1)}`);
+  lines.push(`- running state: CTL ${ctx.ctl.toFixed(1)}, ATL ${ctx.atl.toFixed(1)}, TSB ${ctx.tsb.toFixed(1)}`);
+  if (ctx.aerobicCtl != null || ctx.totalAtl != null) {
+    lines.push(
+      `- cross-training context: aerobic CTL ${ctx.aerobicCtl?.toFixed(1) ?? "unknown"}, total acute load ${ctx.totalAtl?.toFixed(1) ?? "unknown"}, total load balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"}`,
+    );
+  }
+  lines.push(
+    `- continuity: ${ctx.runs28d} runs in 28d, ${ctx.activeRunWeeks4}/4 active weeks, ${ctx.daysSinceLastRun ?? "unknown"} days since last run`,
+  );
+  lines.push(
+    `- longest run: ${ctx.longestRunKm30d.toFixed(1)}km in 30d (${ctx.longestRunKm120d.toFixed(1)}km in 120d)`,
+  );
+  lines.push(`- threshold time share, last 28d: ${(ctx.qualityShare28d * 100).toFixed(1)}%`);
+  if (ctx.strengthDays.length > 0) {
+    lines.push(
+      `- usual strength days (0=Mon): ${ctx.strengthDays.join(", ")}; lower-body days: ${ctx.lowerBodyStrengthDays.join(", ") || "not configured"}`,
+    );
+  }
+  if (ctx.previousDecision) lines.push(`- prior-week controller decision: ${ctx.previousDecision}`);
   lines.push(
     `- recent weekly running km (oldest→newest): ${ctx.recentWeeklyKm.map((k) => k.toFixed(1)).join(", ") || "none"}`,
   );

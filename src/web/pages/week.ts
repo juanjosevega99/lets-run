@@ -40,12 +40,12 @@ export function renderWeek(d: WeekData): string {
        Every plan is gated by the hard-rule validator before it's shown.</p>`;
 
   return `
-  <h1>This week</h1>
+  <h1>${d.plan ? `Plan week · ${esc(d.plan.weekStart)}` : "This week"}</h1>
 
-  <h2>Planned${d.plan ? ` · week of ${esc(d.plan.weekStart)}` : ""}</h2>
+  <h2>Prescription</h2>
   ${planned}
 
-  <h2>Logged</h2>
+  <h2>Logged in this plan week</h2>
   ${logged}`;
 }
 
@@ -62,7 +62,7 @@ function renderPlan(plan: PlanRow): string {
           <td>${DAY_NAMES[s.day] ?? s.day}</td>
           <td>${s.isKey ? "★ " : ""}${esc(s.title)}</td>
           <td>${esc(s.intensity)}</td>
-          <td class="num">${s.planned_km > 0 ? s.planned_km.toFixed(1) : "—"}</td>
+          <td class="num">${s.planned_minutes != null ? `${s.planned_minutes} min` : s.planned_km > 0 ? `${s.planned_km.toFixed(1)} km` : "—"}</td>
           <td>${esc(s.description)}</td>
         </tr>`,
     )
@@ -71,7 +71,7 @@ function renderPlan(plan: PlanRow): string {
   return `
   ${plan.targetLimiter ? `<p class="sub">key session targets: <strong>${esc(plan.targetLimiter)}</strong></p>` : ""}
   <table>
-    <thead><tr><th>day</th><th>session</th><th>intensity</th><th class="num">km</th><th>detail</th></tr></thead>
+    <thead><tr><th>day</th><th>session</th><th>intensity</th><th class="num">dose</th><th>detail</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   ${plan.explanation ? `<p><em>${esc(plan.explanation)}</em></p>` : ""}`;

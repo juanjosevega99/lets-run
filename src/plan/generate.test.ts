@@ -4,11 +4,24 @@ import type { GeneratedPlan } from "./schema.js";
 
 const ctx: PlanContext = {
   limiter: { limiter: "aerobic_base", reason: "CTL 1% of peak" },
+  trainingPhase: "return_to_run",
   ctl: 0.6,
-  atl: 8,
-  tsb: -8.7,
+  atl: 0.1,
+  tsb: 0.5,
+  aerobicCtl: 3.2,
+  totalAtl: 12.4,
+  totalTsb: -8.7,
   previousWeekKm: 20,
   recentWeeklyKm: [0, 5, 12, 20],
+  runs28d: 0,
+  activeRunWeeks4: 0,
+  daysSinceLastRun: 81,
+  longestRunKm30d: 0,
+  longestRunKm120d: 0,
+  qualityShare28d: 0,
+  strengthDays: [0, 2, 4],
+  lowerBodyStrengthDays: [2, 4],
+  previousDecision: null,
   paces: { easySecPerKm: 360, thresholdSecPerKm: 252 },
   paceSource: "observed",
   easyHrCeiling: 159,
@@ -20,10 +33,10 @@ const ctx: PlanContext = {
 
 const legalPlan: GeneratedPlan = {
   target_limiter: "aerobic_base",
-  key_session: { day: 6, title: "Long run", description: "easy long run", intensity: "low", planned_km: 8 },
+  key_session: { day: 6, title: "Longest easy run/walk", description: "30 minutes easy", intensity: "low", planned_km: 4 },
   support_sessions: [
-    { day: 0, title: "Easy run", description: "conversational", intensity: "low", planned_km: 5 },
-    { day: 2, title: "Easy run", description: "conversational", intensity: "low", planned_km: 5 },
+    { day: 1, title: "Easy run/walk", description: "20 minutes conversational", intensity: "low", planned_km: 3 },
+    { day: 3, title: "Easy run/walk", description: "25 minutes conversational", intensity: "low", planned_km: 3 },
     { day: 4, title: "Gym", description: "strength", intensity: "low", planned_km: 0 },
   ],
   explanation: "Rebuild volume gently.",
@@ -44,7 +57,7 @@ describe("generateWeekPlan (validator retry loop)", () => {
   it("accepts a legal plan on the first attempt", async () => {
     const { plan, attempts } = await generateWeekPlan(async () => legalPlan, ctx);
     expect(attempts).toBe(1);
-    expect(plan.key_session.title).toBe("Long run");
+    expect(plan.key_session.title).toBe("Longest easy run/walk");
   });
 
   it("rejects an illegal plan, feeds the violations back, and accepts the fix", async () => {
@@ -70,7 +83,12 @@ describe("generateWeekPlan (validator retry loop)", () => {
 
   it("prompt carries the deterministic inputs: limiter, rules baseline, paces, target", () => {
     const p = buildUserPrompt(ctx, []);
+    expect(p).toContain("training phase: return_to_run");
     expect(p).toContain("aerobic_base");
+    expect(p).toContain("running state: CTL 0.6, ATL 0.1, TSB 0.5");
+    expect(p).toContain("aerobic CTL 3.2");
+    expect(p).toContain("total acute load 12.4");
+    expect(p).toContain("total load balance -8.7");
     expect(p).toContain("20.0 km (10% rule baseline)");
     expect(p).toContain("6:00/km"); // easy pace
     expect(p).toContain("1:37:14"); // target

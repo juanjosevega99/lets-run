@@ -106,9 +106,9 @@ describe("stress hierarchy", () => {
     expect(r.stress).toBeGreaterThan(60);
     expect(r.stress).toBeLessThan(80);
   });
-  it("level 3 — flat rate for gym, so it loads fatigue without inventing fitness data", () => {
+  it("strength — flat duration load even when HR exists", () => {
     const r = activityStress(
-      { sportType: "Weight Training", movingTimeS: 3600, elapsedTimeS: null, distanceM: null, avgHr: null },
+      { sportType: "Weight Training", movingTimeS: 3600, elapsedTimeS: null, distanceM: null, avgHr: 150 },
       hr,
       52,
     );
@@ -123,6 +123,15 @@ describe("stress hierarchy", () => {
     );
     expect(r.stress).toBe(0);
   });
+  it("falls back to elapsed time when a manual activity stores moving time as zero", () => {
+    const r = activityStress(
+      { sportType: "Weight Training", movingTimeS: 0, elapsedTimeS: 3600, distanceM: null, avgHr: null },
+      hr,
+      52,
+    );
+    expect(r.method).toBe("flat");
+    expect(r.stress).toBe(30);
+  });
 });
 
 describe("banister", () => {
@@ -135,21 +144,43 @@ describe("banister", () => {
     const series = banisterSeries(days);
     expect(series[0]!.ctl).toBeCloseTo(100 / 42, 3);
     expect(series[0]!.atl).toBeCloseTo(100 / 7, 3);
-    expect(series[0]!.tsb).toBe(0);
+    expect(series[0]!.tsb).toBeCloseTo(100 / 42 - 100 / 7, 6);
     expect(series.at(-1)!.ctl).toBeGreaterThan(95);
     expect(series[13]!.atl).toBeGreaterThan(series[13]!.ctl); // fatigue leads early
   });
-  it("TSB reflects form going into the day (yesterday's CTL − ATL)", () => {
+  it("TSB is the post-day running CTL − running ATL balance", () => {
     const series = banisterSeries([
       { day: "a", runningStress: 100, totalStress: 100 },
       { day: "b", runningStress: 0, totalStress: 0 },
     ]);
-    expect(series[1]!.tsb).toBeCloseTo(100 / 42 - 100 / 7, 6); // negative: tired after day 1
+    const ctlAfterRestDay = (100 / 42) * (41 / 42);
+    const atlAfterRestDay = (100 / 7) * (6 / 7);
+    expect(series[1]!.tsb).toBeCloseTo(ctlAfterRestDay - atlAfterRestDay, 6);
   });
-  it("gym loads fatigue but not running fitness (the §6 split)", () => {
+  it("gym affects total load but not running or aerobic fitness/fatigue", () => {
     const series = banisterSeries([{ day: "a", runningStress: 0, totalStress: 80 }]);
-    expect(series[0]!.ctl).toBe(0);
-    expect(series[0]!.atl).toBeGreaterThan(0);
+    const day = series[0]!;
+    expect(day.ctl).toBe(0);
+    expect(day.atl).toBe(0);
+    expect(day.tsb).toBe(0);
+    expect(day.aerobicCtl).toBe(0);
+    expect(day.aerobicAtl).toBe(0);
+    expect(day.totalCtl).toBeCloseTo(80 / 42, 6);
+    expect(day.totalAtl).toBeCloseTo(80 / 7, 6);
+    expect(day.totalTsb).toBeCloseTo(80 / 42 - 80 / 7, 6);
+    expect(day.totalLoad).toBe(80);
+  });
+  it("aerobic cross-training builds aerobic and total curves without minting running fitness", () => {
+    const day = banisterSeries([
+      { day: "a", runningStress: 0, aerobicStress: 70, totalStress: 70 },
+    ])[0]!;
+    expect(day.ctl).toBe(0);
+    expect(day.atl).toBe(0);
+    expect(day.tsb).toBe(0);
+    expect(day.aerobicCtl).toBeCloseTo(70 / 42, 6);
+    expect(day.aerobicAtl).toBeCloseTo(70 / 7, 6);
+    expect(day.totalCtl).toBeCloseTo(70 / 42, 6);
+    expect(day.totalAtl).toBeCloseTo(70 / 7, 6);
   });
   it("fillDays zero-fills gaps so detraining actually decays", () => {
     const loads = new Map([

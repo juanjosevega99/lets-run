@@ -11,8 +11,16 @@ function baseInput(overrides: Partial<WeekTemplateInput> = {}): WeekTemplateInpu
   return {
     limiter: "aerobic_base",
     limiterReason: "test reason",
+    trainingPhase: "base",
     previousWeekKm: 20,
     tsb: -5,
+    totalAtl: 10,
+    totalTsb: 0,
+    previousDecision: null,
+    runDays: [0, 2, 4, 6],
+    strengthDays: [1, 5],
+    lowerBodyStrengthDays: [1],
+    longestRunKm30d: 20,
     easyPaceSecPerKm: 360,
     thresholdPaceSecPerKm: 252,
     ...overrides,
@@ -26,6 +34,14 @@ function toSessions(plan: ReturnType<typeof buildWeekTemplate>): PlannedSession[
     intensity: s.intensity,
     plannedKm: s.planned_km,
   }));
+}
+
+function runningSessions(plan: ReturnType<typeof buildWeekTemplate>) {
+  return [plan.key_session, ...plan.support_sessions].filter((s) => s.planned_km > 0);
+}
+
+function totalRunKm(plan: ReturnType<typeof buildWeekTemplate>): number {
+  return runningSessions(plan).reduce((sum, session) => sum + session.planned_km, 0);
 }
 
 describe("buildWeekTemplate — always produces an S2-valid week", () => {
@@ -53,10 +69,18 @@ describe("buildWeekTemplate — always produces an S2-valid week", () => {
 });
 
 describe("buildWeekTemplate — behavior", () => {
-  it("covers all 7 days exactly once across key + support sessions", () => {
+  it("covers the full calendar without putting rest and work on the same day", () => {
     const plan = buildWeekTemplate(baseInput());
-    const days = toSessions(plan).map((s) => s.day).sort((a, b) => a - b);
+    const sessions = toSessions(plan);
+    const days = [...new Set(sessions.map((s) => s.day))].sort((a, b) => a - b);
     expect(days).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
+    for (const day of days) {
+      const onDay = sessions.filter((s) => s.day === day);
+      const hasRest = onDay.some((s) => s.intensity === "rest");
+      const hasWork = onDay.some((s) => s.intensity !== "rest");
+      expect(hasRest && hasWork).toBe(false);
+    }
   });
 
   it("aerobic_base and long_endurance weeks are 100% low intensity", () => {
@@ -77,26 +101,59 @@ describe("buildWeekTemplate — behavior", () => {
     }
   });
 
-  it("holds growth flat (no progression) when TSB is deeply negative, and never exceeds it", () => {
-    const flat = buildWeekTemplate(baseInput({ previousWeekKm: 20, tsb: -25 }));
-    const totalFlat = toSessions(flat).reduce((s, x) => s + x.plannedKm, 0);
-    expect(totalFlat).toBeLessThanOrEqual(20);
-    expect(totalFlat).toBeGreaterThan(19); // flooring loses a little, not much
+  it("holds volume unless the previous review explicitly earned progression", () => {
+    for (const previousDecision of [null, "REPEAT", "PROCEED"] as const) {
+      const plan = buildWeekTemplate(baseInput({ previousWeekKm: 20, tsb: 0, previousDecision }));
+      expect(totalRunKm(plan)).toBeLessThanOrEqual(20);
+      expect(totalRunKm(plan)).toBeGreaterThan(19);
+    }
 
-    // less fatigued → the full +10% allowance, but per-session flooring means the
-    // actual total is <= the cap, never over it (that's the property that matters —
-    // see the exhaustive S2-validity matrix above for every limiter/tsb/volume combo)
-    const normal = buildWeekTemplate(baseInput({ previousWeekKm: 20, tsb: 0 }));
-    const totalNormal = toSessions(normal).reduce((s, x) => s + x.plannedKm, 0);
-    expect(totalNormal).toBeLessThanOrEqual(22);
-    expect(totalNormal).toBeGreaterThan(21);
+    const progressed = buildWeekTemplate(
+      baseInput({ previousWeekKm: 20, tsb: 0, previousDecision: "PROGRESS" }),
+    );
+    expect(totalRunKm(progressed)).toBeLessThanOrEqual(21);
+    expect(totalRunKm(progressed)).toBeGreaterThan(20);
   });
 
-  it("starts at a conservative default when there is no volume baseline", () => {
-    const plan = buildWeekTemplate(baseInput({ previousWeekKm: null, tsb: -25 })); // flat progression, isolates the default
-    const total = toSessions(plan).reduce((s, x) => s + x.plannedKm, 0);
-    expect(total).toBeLessThanOrEqual(12);
-    expect(total).toBeGreaterThan(11);
+  it("lets fatigue and a DELOAD decision override earned progression", () => {
+    const fatigued = buildWeekTemplate(
+      baseInput({ previousWeekKm: 20, tsb: -25, previousDecision: "PROGRESS" }),
+    );
+    expect(totalRunKm(fatigued)).toBeLessThanOrEqual(18);
+    expect(totalRunKm(fatigued)).toBeGreaterThan(17);
+
+    const crossTrainingFatigued = buildWeekTemplate(
+      baseInput({ previousWeekKm: 20, tsb: 0, totalTsb: -30, previousDecision: "PROGRESS" }),
+    );
+    expect(totalRunKm(crossTrainingFatigued)).toBeLessThanOrEqual(18);
+
+    const deload = buildWeekTemplate(
+      baseInput({ previousWeekKm: 20, tsb: 0, previousDecision: "DELOAD" }),
+    );
+    expect(totalRunKm(deload)).toBeLessThanOrEqual(16);
+    expect(totalRunKm(deload)).toBeGreaterThan(15);
+  });
+
+  it("uses phase-specific conservative defaults when there is no volume baseline", () => {
+    const base = buildWeekTemplate(baseInput({ previousWeekKm: null, tsb: 0 }));
+    expect(totalRunKm(base)).toBeLessThanOrEqual(12);
+    expect(totalRunKm(base)).toBeGreaterThan(11);
+
+    const returning = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        previousWeekKm: null,
+        tsb: 0,
+        runDays: [1, 3, 6],
+      }),
+    );
+    expect(totalRunKm(returning)).toBeLessThanOrEqual(10);
+    expect(totalRunKm(returning)).toBeGreaterThan(9);
+  });
+
+  it("caps the longest run at 110% of the longest run from the last 30 days", () => {
+    const plan = buildWeekTemplate(baseInput({ longestRunKm30d: 3 }));
+    expect(plan.key_session.planned_km).toBeLessThanOrEqual(3.3);
   });
 
   it("includes real paces in session descriptions when available", () => {
@@ -108,9 +165,11 @@ describe("buildWeekTemplate — behavior", () => {
     const plan = buildWeekTemplate(
       baseInput({ limiter: "aerobic_base", easyPaceSecPerKm: 435, easyHrCeiling: 159 }),
     );
-    for (const s of [plan.key_session, ...plan.support_sessions.filter((x) => x.intensity === "low")]) {
+    for (const s of runningSessions(plan)) {
+      expect(s.description).toContain("full-sentence conversational effort");
       expect(s.description).toContain("HR under 159 bpm");
-      expect(s.description).toContain("HR governs");
+      expect(s.description).toContain("effort governs");
+      expect(s.description).toContain("slow down or walk as needed");
     }
   });
 
@@ -123,9 +182,84 @@ describe("buildWeekTemplate — behavior", () => {
     expect(plan.key_session.description).not.toContain("NaN");
   });
 
-  it("explanation cites the limiter reason and is honest about being template-based", () => {
-    const plan = buildWeekTemplate(baseInput({ limiterReason: "CTL is 1% of peak" }));
-    expect(plan.explanation).toContain("no LLM call");
-    expect(plan.explanation).toContain("CTL is 1% of peak");
+  it("explanation names the phase, prior decision, limiter evidence, and gym context", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        previousDecision: "REPEAT",
+        limiterReason: "81 days since the last run",
+      }),
+    );
+    expect(plan.explanation).toContain("Coach v2 · return to run");
+    expect(plan.explanation).toContain("81 days since the last run");
+    expect(plan.explanation).toContain("Previous-week decision: REPEAT");
+    expect(plan.explanation).toContain("Gym work is shown on 2");
+  });
+});
+
+describe("buildWeekTemplate — return-to-run and gym calendar", () => {
+  it("prescribes exactly 3 nonconsecutive, all-easy runs", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        runDays: [1, 3, 6],
+        previousWeekKm: null,
+        strengthDays: [0, 4],
+        lowerBodyStrengthDays: [0],
+      }),
+    );
+    const runs = runningSessions(plan).sort((a, b) => a.day - b.day);
+
+    expect(runs).toHaveLength(3);
+    expect(runs.map((s) => s.day)).toEqual([1, 3, 6]);
+    expect(runs.every((s) => s.intensity === "low")).toBe(true);
+    expect(plan.key_session.title).toBe("Longest easy run/walk");
+    expect(runs.map((s) => s.planned_minutes)).toEqual([20, 25, 30]);
+    expect(runs.every((s) => s.description.includes("Walk breaks are allowed"))).toBe(true);
+    for (let i = 1; i < runs.length; i++) {
+      expect(runs[i]!.day - runs[i - 1]!.day).toBeGreaterThan(1);
+    }
+  });
+
+  it("places configured gym sessions, identifies lower-body work, and preserves full rest days", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        runDays: [1, 3, 6],
+        strengthDays: [0, 4],
+        lowerBodyStrengthDays: [0],
+      }),
+    );
+    const sessions = [plan.key_session, ...plan.support_sessions];
+    const gym = sessions.filter((s) => s.planned_km === 0 && s.title.toLowerCase().includes("strength"));
+    const rest = sessions.filter((s) => s.intensity === "rest");
+
+    expect(gym.map((s) => s.day).sort((a, b) => a - b)).toEqual([0, 4]);
+    expect(gym.find((s) => s.day === 0)?.title).toBe("Lower-body strength");
+    expect(gym.find((s) => s.day === 4)?.title).toBe("Strength training");
+    expect(rest.map((s) => s.day).sort((a, b) => a - b)).toEqual([2, 5]);
+
+    for (const restSession of rest) {
+      expect(sessions.some((s) => s.day === restSession.day && s.intensity !== "rest")).toBe(false);
+    }
+    expect(validateWeek({ sessions: toSessions(plan), previousWeekKm: 20 })).toEqual([]);
+  });
+
+  it("supports a run and gym session on the same day without labeling that day as rest", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        runDays: [1, 3, 6],
+        strengthDays: [1, 4],
+        lowerBodyStrengthDays: [],
+      }),
+    );
+    const sessions = [plan.key_session, ...plan.support_sessions];
+    const tuesday = sessions.filter((s) => s.day === 1);
+
+    expect(tuesday.filter((s) => s.planned_km > 0)).toHaveLength(1);
+    expect(tuesday.filter((s) => s.title === "Strength training")).toHaveLength(1);
+    expect(tuesday.some((s) => s.intensity === "rest")).toBe(false);
+    expect(sessions.some((s) => s.intensity === "rest")).toBe(true);
   });
 });

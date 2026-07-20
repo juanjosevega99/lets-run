@@ -3,7 +3,8 @@ import { connect } from "../db.js";
 import { generateWeekPlan } from "./generate.js";
 import { anthropicLlm } from "./llm.js";
 import { toValidatorSessions } from "./schema.js";
-import { buildPlanContext, nextMonday } from "./context.js";
+import { buildPlanContext, nextMonday, reviewCutoffForReplan } from "./context.js";
+import { reviewLatestCompletedWeek } from "./review.js";
 
 /**
  * Generates next week's plan (F3) and persists it to plan_week:
@@ -17,7 +18,9 @@ import { buildPlanContext, nextMonday } from "./context.js";
 async function main() {
   const sql = connect();
   try {
+    await reviewLatestCompletedWeek(sql, reviewCutoffForReplan(), (line) => console.log(line));
     const ctx = await buildPlanContext(sql);
+    console.log(`phase: ${ctx.trainingPhase}`);
     console.log(`limiter: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
     console.log(`generating plan (validator-gated, up to 3 attempts)...`);
 

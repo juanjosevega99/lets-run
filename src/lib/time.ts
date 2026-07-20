@@ -24,6 +24,16 @@ export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** YYYY-MM-DD for an instant in the athlete's local timezone. */
+export function dateInTimeZone(d: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone,
+  }).format(d);
+}
+
 /**
  * YYYY-MM-DD from a Postgres DATE column, which postgres.js may hand back as a
  * midnight-UTC Date. String() would render it in LOCAL time and shift a day back

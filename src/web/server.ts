@@ -14,6 +14,7 @@ import {
   livePredictions,
   peakEraWeeklyAvgKm,
   recentSnapshot,
+  activitiesForWeek,
   thisWeekActivities,
   weeklyRunVolume,
 } from "./queries.js";
@@ -122,9 +123,12 @@ async function route(path: string): Promise<string | null> {
       );
     }
     case "/week": {
-      const [activities, plan] = await Promise.all([thisWeekActivities(sql), latestPlan(sql)]);
+      const plan = await latestPlan(sql);
+      // Show actuals from the same dates as the displayed prescription. Previously
+      // a future plan could sit beside the current calendar week's activities.
+      const activities = plan ? await activitiesForWeek(sql, plan.weekStart) : await thisWeekActivities(sql);
       return layout(
-        "lets-run · this week",
+        "lets-run · plan week",
         "/week",
         renderWeek({ activities, plan, tz: dashboardTz() }),
       );

@@ -2,11 +2,11 @@ import type { Sql } from "../db.js";
 import { syncStrava, type Log } from "../strava/sync.js";
 import { rebuildFitness } from "../fitness/rebuild.js";
 import { generateFreeWeekPlan } from "../plan/freePlan.js";
+import { generateLivePrediction } from "../predict/live.js";
 
 /**
  * The Sunday-evening action, as one call: pull new training from Strava → recompute
- * fitness → regenerate next week's plan. Exactly what `npm run strava:sync &&
- * npm run fitness:rebuild && npm run plan:free` does, callable from the dashboard.
+ * fitness → update current shape → regenerate next week's plan.
  *
  * Steps are sequential and dependent — fitness needs the new activities, the plan
  * needs the new fitness. A failing step aborts the rest rather than planning off
@@ -23,6 +23,7 @@ export interface RefreshResult {
 const STEPS: { name: string; run: (sql: Sql, log: Log) => Promise<unknown> }[] = [
   { name: "sync", run: syncStrava },
   { name: "fitness", run: rebuildFitness },
+  { name: "current shape", run: generateLivePrediction },
   { name: "plan", run: generateFreeWeekPlan },
 ];
 

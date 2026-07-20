@@ -30,7 +30,7 @@ const SESSION_SCHEMA = {
     title: { type: "string" },
     description: { type: "string" },
     intensity: { type: "string", enum: ["low", "high", "rest"] },
-    planned_km: { type: "number" },
+    planned_km: { type: "number", minimum: 0 },
   },
 } as const;
 

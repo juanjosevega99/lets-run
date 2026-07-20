@@ -58,18 +58,21 @@ export function renderNow(d: NowData): string {
     <p class="sub">Thin bracket, high variance — train for the time, not last year's field.</p>
   </div>
 
-  <h2>Current prediction</h2>
+  <h2>Current-shape estimate</h2>
   ${prediction}
 
-  <h2>Fitness (Banister)</h2>
+  <h2>Training load (Banister-style, experimental)</h2>
   ${
     d.fitness
       ? `<div class="cards">
-    <div class="card"><div class="v">${d.fitness.ctl.toFixed(1)}</div><div class="k">CTL — running fitness</div></div>
-    <div class="card"><div class="v">${d.fitness.atl.toFixed(1)}</div><div class="k">ATL — fatigue (all sports)</div></div>
-    <div class="card"><div class="v">${d.fitness.tsb.toFixed(1)}</div><div class="k">TSB — form</div></div>
+    <div class="card"><div class="v">${d.fitness.ctl.toFixed(1)}</div><div class="k">chronic running load</div></div>
+    <div class="card"><div class="v">${d.fitness.atl.toFixed(1)}</div><div class="k">acute running load</div></div>
+    <div class="card"><div class="v">${d.fitness.tsb.toFixed(1)}</div><div class="k">running load balance</div></div>
+    <div class="card"><div class="v">${d.fitness.aerobicCtl?.toFixed(1) ?? "—"}</div><div class="k">combined aerobic chronic load</div></div>
+    <div class="card"><div class="v">${d.fitness.totalAtl?.toFixed(1) ?? "—"}</div><div class="k">acute whole-program load</div></div>
+    <div class="card"><div class="v">${d.fitness.totalTsb?.toFixed(1) ?? "—"}</div><div class="k">whole-program load balance</div></div>
   </div>
-  <p class="sub">as of ${esc(d.fitness.day)}</p>`
+  <p class="sub">as of ${esc(d.fitness.day)} · workload indices are coaching context, not direct measurements of fitness, fatigue, or readiness</p>`
       : `<p class="empty">No fitness state yet — press <strong>Sync &amp; replan</strong> above.</p>`
   }
 
@@ -112,8 +115,8 @@ function predictionBlock(p: PredictionRow): string {
       : `<strong>${formatDuration(gapS)} to close</strong> to ${formatDuration(RACE.targetTimeS)}`;
   const band =
     p.intervalP10S != null && p.intervalP90S != null
-      ? ` <span class="sub">(${formatDuration(p.intervalP10S)} – ${formatDuration(p.intervalP90S)})</span>`
+      ? ` <span class="sub">(${formatDuration(p.intervalP10S)} – ${formatDuration(p.intervalP90S)} historical model-error range${p.intervalSampleSize != null ? `, n=${p.intervalSampleSize}` : ""})</span>`
       : "";
   return `<p class="big">${formatDuration(p.predictedTimeS)}${band}</p>
-  <p>${gap} · model: <code>${esc(p.predictor)}</code> · ${esc(isoDate(p.predictedAt))}</p>`;
+  <p>${gap} · if raced at today's estimated shape; this is not a forecast for race day · model: <code>${esc(p.predictor)}</code> · ${esc(isoDate(p.predictedAt))}</p>`;
 }

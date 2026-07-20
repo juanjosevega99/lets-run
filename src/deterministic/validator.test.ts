@@ -59,6 +59,45 @@ describe("validateWeek (S2 hard rules)", () => {
     expect(v.map((x) => x.rule)).toContain("consecutive_high");
   });
 
+  it.each([
+    { label: "negative", plannedKm: -1 },
+    { label: "NaN", plannedKm: Number.NaN },
+    { label: "positive infinity", plannedKm: Number.POSITIVE_INFINITY },
+    { label: "negative infinity", plannedKm: Number.NEGATIVE_INFINITY },
+  ])("rejects $label planned distance without poisoning the remaining checks", ({ plannedKm }) => {
+    const v = validateWeek({
+      sessions: [{ day: 0, title: "invalid distance", intensity: "low", plannedKm }, easy(2, 5)],
+      previousWeekKm: null,
+    });
+    expect(v.filter((x) => x.rule === "invalid_planned_km")).toHaveLength(1);
+  });
+
+  it.each([-1, 7, 1.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid day %s", (day) => {
+    const v = validateWeek({ sessions: [easy(day, 5)], previousWeekKm: null });
+    expect(v.filter((x) => x.rule === "invalid_day")).toHaveLength(1);
+  });
+
+  it("rejects a rest-labeled session with positive distance", () => {
+    const v = validateWeek({
+      sessions: [{ day: 1, title: "Rest", intensity: "rest", plannedKm: 5 }],
+      previousWeekKm: null,
+    });
+    expect(v.map((x) => x.rule)).toContain("rest_session_distance");
+  });
+
+  it("rejects a day declared as rest that also contains high-intensity work", () => {
+    const v = validateWeek({
+      sessions: [
+        { day: 1, title: "Rest", intensity: "rest", plannedKm: 0 },
+        { day: 1, title: "Intervals", intensity: "high", plannedKm: 4 },
+        easy(3, 12),
+      ],
+      previousWeekKm: null,
+    });
+    const conflict = v.find((x) => x.rule === "rest_day_conflict");
+    expect(conflict?.detail).toContain("Intervals (high)");
+  });
+
   it("reports multiple violations at once (the LLM gets the full list to fix)", () => {
     const v = validateWeek({
       sessions: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
@@ -74,5 +113,24 @@ describe("validateWeek (S2 hard rules)", () => {
     expect(rules).toContain("rest_day");
     expect(rules).toContain("polarized");
     expect(rules).toContain("consecutive_high");
+  });
+
+  it("gates return-to-run frequency, effort, spacing, and single-run spikes", () => {
+    const v = validateWeek({
+      sessions: [
+        easy(0, 3),
+        { day: 1, title: "tempo", intensity: "high", plannedKm: 6 },
+        easy(2, 3),
+        easy(4, 3),
+      ],
+      previousWeekKm: null,
+      trainingPhase: "return_to_run",
+      longestRunKm30d: 4,
+    });
+    const rules = v.map((x) => x.rule);
+    expect(rules).toContain("return_to_run_frequency");
+    expect(rules).toContain("return_to_run_intensity");
+    expect(rules).toContain("return_to_run_spacing");
+    expect(rules).toContain("single_run_spike");
   });
 });
