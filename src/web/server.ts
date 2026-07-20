@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { connect } from "../db.js";
 import { layout } from "./layout.js";
-import { isAuthorized } from "./auth.js";
 import { RACE, daysToRace } from "../lib/race.js";
 import { runRefresh } from "../pipeline/refresh.js";
 import {
@@ -29,11 +28,8 @@ import { renderTrajectory } from "./pages/trajectory.js";
  *
  *   npm run web            # http://localhost:3000
  *
- * Set DASHBOARD_PASSWORD to enable the single-user gate — required before deploying
- * anywhere public, optional locally.
  */
 const PORT = Number(process.env.PORT ?? 3000);
-const PASSWORD = process.env.DASHBOARD_PASSWORD;
 const sql = connect();
 
 /**
@@ -45,22 +41,6 @@ let refreshInFlight = false;
 
 export async function requestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   res.setHeader("cache-control", "private, no-store");
-
-  // A missing password must never accidentally publish the private dashboard.
-  if (process.env.VERCEL === "1" && !PASSWORD) {
-    res.writeHead(503, { "content-type": "text/plain" });
-    res.end("DASHBOARD_PASSWORD is required on Vercel");
-    return;
-  }
-
-  if (PASSWORD && !isAuthorized(req.headers.authorization, PASSWORD)) {
-    res.writeHead(401, {
-      "www-authenticate": 'Basic realm="lets-run"',
-      "content-type": "text/plain",
-    });
-    res.end("auth required");
-    return;
-  }
 
   const requestUrl = new URL(req.url ?? "/", "http://localhost");
   // Vercel rewrites preserve the public route in ?path=... while local requests
@@ -173,6 +153,5 @@ const isMainModule = process.argv[1] != null && fileURLToPath(import.meta.url) =
 if (isMainModule) {
   server.listen(PORT, () => {
     console.log(`lets-run web → http://localhost:${PORT}  (${RACE.bracket}, ${daysToRace(new Date())} days to race)`);
-    if (!PASSWORD) console.log("DASHBOARD_PASSWORD not set — auth gate off (fine locally, required before deploy)");
   });
 }

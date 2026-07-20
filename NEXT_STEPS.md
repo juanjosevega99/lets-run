@@ -79,6 +79,11 @@ green recovery signal.
 
 ### P1 — make the nine-month forecast real
 
+> **Implementation spec ready:** `docs/p1-forecast-implementation.md` — self-contained
+> handoff (measured defects, performance-state model with calibrated CTL bridge,
+> freshness-aware intervals, scenario forecast, tests, runbook). Needs Juan's
+> max-effort/confidence confirmations for the race table (defaults proposed in §3.1).
+
 - Keep `current_shape_estimate` separate from a future `race_day_forecast`.
 - Add planned-training / reduced-adherence / maintain-current-load scenarios.
 - Add milestone tests only after several consistent, pain-free run weeks provide a fresh

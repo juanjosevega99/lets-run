@@ -61,8 +61,7 @@ return-to-run week before base/build/specific/taper work. Recurring gym days are
 configure `ATHLETE_LOWER_BODY_DAYS` in `.env` because Strava's generic strength records
 cannot reveal the split.
 
-Set `DASHBOARD_PASSWORD` to enable the single-user auth gate — required before deploying
-anywhere public. `DASHBOARD_TZ` (default `America/Bogota`) controls activity-day, fitness,
+`DASHBOARD_TZ` (default `America/Bogota`) controls activity-day, fitness,
 plan-week, and compliance bucketing.
 
 ## Vercel release and phone access
@@ -76,8 +75,8 @@ screen. The Basic Auth prompt is the dashboard password.
    `VERCEL_PROJECT_ID` are available from the Vercel CLI/project settings).
 2. Run `npm run migrate` once with the production `DATABASE_URL` before the first deploy.
 3. In Vercel → Project Settings → Environment Variables, add `DATABASE_URL`,
-   `DASHBOARD_PASSWORD`, the Strava variables, athlete profile variables, and
-   `DASHBOARD_TZ` for **Production**. Preview deployments should use a separate database
+   the Strava variables, athlete profile variables, and `DASHBOARD_TZ` for **Production**.
+   Preview deployments should use a separate database
    (or be disabled) so a pull request cannot write to production training data.
 4. Add these GitHub repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and
    `VERCEL_PROJECT_ID`.
