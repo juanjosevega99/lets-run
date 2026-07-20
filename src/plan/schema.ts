@@ -19,6 +19,7 @@ export interface PlanSession {
   description: string;
   intensity: "low" | "high" | "rest";
   planned_km: number;
+  planned_minutes?: number;
 }
 
 const SESSION_SCHEMA = {
@@ -31,6 +32,7 @@ const SESSION_SCHEMA = {
     description: { type: "string" },
     intensity: { type: "string", enum: ["low", "high", "rest"] },
     planned_km: { type: "number", minimum: 0 },
+    planned_minutes: { type: "number", minimum: 0 },
   },
 } as const;
 
@@ -53,5 +55,6 @@ export function toValidatorSessions(plan: GeneratedPlan): PlannedSession[] {
     title: s.title,
     intensity: s.intensity,
     plannedKm: s.planned_km,
+    plannedMinutes: s.planned_minutes,
   }));
 }

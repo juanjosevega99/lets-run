@@ -3,7 +3,7 @@ import { predictors } from "../backtest/registry.js";
 import { loadHistory, loadRaces } from "../backtest/history.js";
 import { quantile } from "../backtest/metrics.js";
 import { RACE, daysToRace } from "../lib/race.js";
-import { formatDuration, isoDate } from "../lib/time.js";
+import { dateInTimeZone, formatDuration } from "../lib/time.js";
 import type { Log } from "../strava/sync.js";
 
 export const DEFAULT_LIVE_MODEL = "vdot-ctl-v1";
@@ -56,7 +56,7 @@ export async function generateLivePrediction(
   await sql`
     insert into prediction_log (data_cutoff, race_distance_m, predicted_time_s,
                                 interval_p10_s, interval_p90_s, predictor, context)
-    values (${isoDate(cutoff)}, ${RACE.distanceM}, ${result.timeS}, ${p10}, ${p90},
+    values (${dateInTimeZone(cutoff, process.env.DASHBOARD_TZ ?? "America/Bogota")}, ${RACE.distanceM}, ${result.timeS}, ${p10}, ${p90},
             ${predictor.name}, ${sql.json({
               live: true,
               canonical,

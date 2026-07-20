@@ -208,7 +208,10 @@ export async function latestFitness(sql: Sql): Promise<FitnessRow | null> {
     }[]
   >`
     select day, ctl, atl, tsb, aerobic_ctl, aerobic_atl, total_ctl, total_atl, total_tsb
-    from fitness_state order by day desc limit 1
+    from fitness_state
+    where model_version = 'banister-v2-multisport'
+      and aerobic_ctl is not null and total_atl is not null and total_tsb is not null
+    order by day desc limit 1
   `;
   const r = rows[0];
   return r

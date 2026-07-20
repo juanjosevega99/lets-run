@@ -50,5 +50,17 @@ describe("selectTrainingFocus", () => {
     expect(phaseRunDays("base")).toHaveLength(4);
     expect(phaseRunDays("taper")).toHaveLength(3);
   });
-});
 
+  it("moves the key run away from configured lower-body strength", () => {
+    const days = phaseRunDays("return_to_run", [5]);
+    expect(days).toHaveLength(3);
+    expect(days.at(-1)).not.toBe(6);
+    expect(days.every((day, i) => i === 0 || day - days[i - 1]! > 1)).toBe(true);
+  });
+
+  it("treats missing quality measurement as unknown, not zero", () => {
+    const result = selectTrainingFocus({ ...common, phase: "build", qualityShare28d: null });
+    expect(result.limiter).toBe("aerobic_base");
+    expect(result.reason).toContain("unknown");
+  });
+});

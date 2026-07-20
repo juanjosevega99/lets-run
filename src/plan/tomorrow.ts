@@ -2,6 +2,7 @@ import "dotenv/config";
 import { connect } from "../db.js";
 import { buildPlanContext } from "./context.js";
 import { formatDuration } from "../lib/time.js";
+import { phaseRunDays } from "../deterministic/trainingPhase.js";
 
 /**
  * A single day's suggestion with ZERO LLM calls — for when ANTHROPIC_API_KEY isn't
@@ -18,34 +19,54 @@ async function main() {
     const ctx = await buildPlanContext(sql);
     const tomorrow = new Date(Date.now() + 86_400_000);
     const dayName = new Intl.DateTimeFormat("en", { weekday: "long" }).format(tomorrow);
+    const shortDay = new Intl.DateTimeFormat("en", {
+      weekday: "short",
+      timeZone: process.env.DASHBOARD_TZ ?? "America/Bogota",
+    }).format(tomorrow);
+    const isoWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(shortDay);
 
     console.log(`${ctx.raceName} — ${ctx.daysToRace} days to go`);
     console.log(`limiter: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
     console.log(
-      `fitness: CTL ${ctx.ctl.toFixed(1)} (running) · ATL ${ctx.atl.toFixed(1)} (fatigue, all sports) · TSB ${ctx.tsb.toFixed(1)} (form)`,
+      `load: running chronic ${ctx.ctl.toFixed(1)} · running acute ${ctx.atl.toFixed(1)} · running balance ${ctx.tsb.toFixed(1)} · whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"}`,
     );
     if (ctx.predictedTimeS != null) {
-      console.log(`current prediction: ${formatDuration(ctx.predictedTimeS)} (target ${formatDuration(ctx.targetTimeS)})`);
+      console.log(`current-shape estimate: ${formatDuration(ctx.predictedTimeS)} (target ${formatDuration(ctx.targetTimeS)})`);
     }
     console.log(`\n${dayName}:\n`);
 
-    for (const line of suggest(ctx.tsb, ctx.limiter.limiter, ctx.paces, ctx.easyHrCeiling)) {
+    for (const line of suggest({
+      phase: ctx.trainingPhase,
+      limiter: ctx.limiter.limiter,
+      runningTsb: ctx.tsb,
+      totalTsb: ctx.totalTsb,
+      paces: ctx.paces,
+      easyHrCeiling: ctx.easyHrCeiling,
+      day: isoWeekday,
+      runDays: phaseRunDays(ctx.trainingPhase, ctx.lowerBodyStrengthDays),
+      strengthDays: ctx.strengthDays,
+    })) {
       console.log(`  ${line}`);
     }
 
-    console.log(`\nThis is a single-day rule of thumb, not the F3 weekly plan (that needs an LLM`);
-    console.log(`call — run \`npm run plan\` once ANTHROPIC_API_KEY is set in .env).`);
+    console.log(`\nThis is a single-day view. The canonical prescription is \`npm run plan:free\`.`);
   } finally {
     await sql.end();
   }
 }
 
-function suggest(
-  tsb: number,
-  limiter: string,
-  paces: { easySecPerKm: number; thresholdSecPerKm: number } | null,
-  easyHrCeiling: number | null,
-): string[] {
+function suggest(x: {
+  phase: string;
+  limiter: string;
+  runningTsb: number;
+  totalTsb: number | null;
+  paces: { easySecPerKm: number; thresholdSecPerKm: number | null } | null;
+  easyHrCeiling: number | null;
+  day: number;
+  runDays: number[];
+  strengthDays: number[];
+}): string[] {
+  const { paces, easyHrCeiling } = x;
   const easy = paces ? paceStr(paces.easySecPerKm) : null;
   // HR governs when available — a pace target alone can be far too fast while detrained.
   const effort = easyHrCeiling
@@ -56,15 +77,25 @@ function suggest(
 
   // TSB below -20 means real accumulated fatigue (here: two long rides this weekend) —
   // recovery outranks the limiter regardless of what it is.
-  if (tsb < -20) {
+  if ((x.totalTsb ?? x.runningTsb) < -25) {
     return [
-      `TSB ${tsb.toFixed(1)} — real fatigue on board (this weekend's rides). Recover first.`,
-      `Easy 20-30min jog — ${effort} — if the legs feel okay, or full rest if they don't.`,
-      `Don't chase volume today — a fatigued easy run teaches the body the wrong pace.`,
+      `Whole-program load is elevated. Keep the prescribed dose reduced and do not add training.`,
+      x.runDays.includes(x.day)
+        ? `If pain-free and legs feel normal: the planned easy run/walk at ${effort}; otherwise rest.`
+        : x.strengthDays.includes(x.day)
+          ? `Gym only as planned; reduce lower-body work if soreness is present.`
+          : `Full rest.`,
     ];
   }
 
-  if (limiter === "aerobic_base") {
+  if (x.phase === "return_to_run") {
+    if (!x.runDays.includes(x.day)) {
+      return [x.strengthDays.includes(x.day) ? "Gym only as planned; no extra run." : "Full rest; no extra run."];
+    }
+    return [`Return-to-run day: complete only the planned easy run/walk — ${effort}. Walk breaks are allowed.`];
+  }
+
+  if (x.limiter === "aerobic_base") {
     return [
       `Limiter is aerobic base — CTL is still near zero, so the only job right now is`,
       `consistent easy running, not intensity.`,
@@ -73,7 +104,7 @@ function suggest(
   }
 
   return [
-    `Limiter is ${limiter} — this is past the "just run easy" stage; the right session`,
+    `Limiter is ${x.limiter} — this is past the "just run easy" stage; the right session`,
     `depends on the week's structure. Worth generating the real weekly plan for this one.`,
   ];
 }
@@ -81,7 +112,7 @@ function suggest(
 function paceStr(secPerKm: number): string {
   const m = Math.floor(secPerKm / 60);
   const s = Math.round(secPerKm % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return `${s === 60 ? m + 1 : m}:${String(s === 60 ? 0 : s).padStart(2, "0")}`;
 }
 
 main().catch((err) => {

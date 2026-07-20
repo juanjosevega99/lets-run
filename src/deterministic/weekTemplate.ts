@@ -210,7 +210,7 @@ function oneHighDayWeek(
       ? {
           day: keyDay,
           title: "Threshold session",
-          description: `${highKm.toFixed(1)}km at threshold effort${thresholdPace} (e.g. 3x10min with easy jog recovery), easy jog before/after not included.`,
+          description: `${highKm.toFixed(1)}km total, including easy warm-up/cool-down and controlled threshold work${thresholdPace}. Keep the quality portion conservative (for example, short repeats with easy jog recovery).`,
           intensity: "high",
           planned_km: highKm,
         }
@@ -250,12 +250,17 @@ function calendarSupport(
   const sessions = [...running];
   for (const day of x.strengthDays) {
     const lower = x.lowerBodyStrengthDays.includes(day);
+    const overloaded = x.totalTsb != null && x.totalTsb < -25;
     sessions.push({
       day,
       title: lower ? "Lower-body strength" : "Strength training",
-      description: lower
-        ? "Configured lower-body gym session — keep the following run easy and report leg soreness."
-        : "Usual gym session (inferred from recent history unless configured).",
+      description: overloaded
+        ? lower
+          ? "Recovery-adjusted lower-body session: cut volume, keep at least 3 reps in reserve, and skip it if leg soreness persists."
+          : "Recovery-adjusted gym: favor upper body/mobility, reduce volume, and keep at least 3 reps in reserve."
+        : lower
+          ? "Configured lower-body gym session — keep the following run easy and report leg soreness."
+          : "Usual gym session (inferred from recent history unless configured).",
       intensity: "low",
       planned_km: 0,
     });

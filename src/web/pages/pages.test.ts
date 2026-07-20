@@ -37,6 +37,7 @@ function nowData(overrides: Partial<NowData> = {}): NowData {
       { name: "Media Maraton Medellin", raceDate: "2022-09-04", distanceKm: 21.0975, officialTimeS: 5979, terrain: "road" },
     ],
     now: new Date("2026-07-18T12:00:00Z"),
+    tz: "America/Bogota",
     ...overrides,
   };
 }
@@ -169,6 +170,7 @@ describe("renderTrajectory", () => {
       ],
       peakAvgKm: 45.2,
       predictions: [],
+      tz: "America/Bogota",
     });
     expect(html).toContain("<svg");
     expect(html).toContain("2021-22 avg 45 km/wk");
@@ -179,6 +181,7 @@ describe("renderTrajectory", () => {
     const html = renderTrajectory({
       weeks: [],
       peakAvgKm: null,
+      tz: "America/Bogota",
       predictions: [
         {
           predictedAt: new Date("2026-08-01T00:00:00Z"),
@@ -189,7 +192,7 @@ describe("renderTrajectory", () => {
         },
       ],
     });
-    expect(html).toContain("2026-08-01");
+    expect(html).toContain("2026-07-31");
     expect(html).toContain("1:43:20");
   });
 });

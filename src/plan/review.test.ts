@@ -19,6 +19,7 @@ describe("reviewWeek", () => {
         { day: 3, distanceKm: 3 },
         { day: 6, distanceKm: 4 },
       ],
+      readinessConfirmed: true,
     });
     expect(result.decision).toBe("PROGRESS");
     expect(result.keyCompleted).toBe(true);
@@ -64,9 +65,44 @@ describe("reviewWeek", () => {
         { day: 3, distanceKm: 3 },
         { day: 5, distanceKm: 8 }, // Sunday key moved to Saturday, plus extra distance
       ],
+      readinessConfirmed: true,
     });
     expect(result.keyCompleted).toBe(true);
     expect(result.completedRunSessions).toBe(3);
+    expect(result.compliancePct).toBe(100);
+    expect(result.decision).toBe("PROGRESS");
+  });
+
+  it("holds when objective compliance is green but pain/soreness feedback is missing", () => {
+    const result = reviewWeek({
+      sessions,
+      keySession: key,
+      actualRuns: [
+        { day: 1, distanceKm: 3 },
+        { day: 3, distanceKm: 3 },
+        { day: 6, distanceKm: 4 },
+      ],
+    });
+    expect(result.compliancePct).toBe(100);
+    expect(result.decision).toBe("PROCEED");
+    expect(result.explanation).toContain("readiness was not confirmed");
+  });
+
+  it("reviews duration-first run/walk sessions by time, not estimated distance", () => {
+    const durationKey: PlannedSession = {
+      day: 6,
+      title: "Run/walk",
+      intensity: "low",
+      plannedKm: 4,
+      plannedMinutes: 30,
+    };
+    const result = reviewWeek({
+      sessions: [durationKey],
+      keySession: durationKey,
+      actualRuns: [{ day: 6, distanceKm: 1.5, durationMinutes: 30 }],
+      readinessConfirmed: true,
+    });
+    expect(result.keyCompleted).toBe(true);
     expect(result.compliancePct).toBe(100);
     expect(result.decision).toBe("PROGRESS");
   });

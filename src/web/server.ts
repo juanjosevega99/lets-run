@@ -119,6 +119,7 @@ async function route(path: string): Promise<string | null> {
           latestActivityDate: latest,
           races,
           now,
+          tz: dashboardTz(),
         }),
       );
     }
@@ -142,7 +143,7 @@ async function route(path: string): Promise<string | null> {
       return layout(
         "lets-run · trajectory",
         "/trajectory",
-        renderTrajectory({ weeks, peakAvgKm, predictions }),
+        renderTrajectory({ weeks, peakAvgKm, predictions, tz: dashboardTz() }),
       );
     }
     default:

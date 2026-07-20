@@ -4,6 +4,7 @@ import { trainingPaces, vdotFromRace } from "../deterministic/vdot.js";
 import { hrZones, median } from "../deterministic/zones.js";
 import { selectTrainingFocus, selectTrainingPhase } from "../deterministic/trainingPhase.js";
 import { RACE, daysToRace } from "../lib/race.js";
+import { dateOnly } from "../lib/time.js";
 import { weeklyRunVolume, latestFitness, livePredictions, dashboardTz } from "../web/queries.js";
 import { latestWeekDecision } from "./review.js";
 
@@ -73,16 +74,21 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
       count(*) filter (where start_date >= now() - interval '28 days')::int as runs_28d,
       max(distance_m) filter (where start_date >= now() - interval '30 days') as longest_30d_m,
       max(distance_m) filter (where start_date >= now() - interval '120 days') as longest_120d_m,
-      (current_date - max((start_date at time zone ${dashboardTz()})::date))::int as days_since_last_run
+      ((now() at time zone ${dashboardTz()})::date -
+        max((start_date at time zone ${dashboardTz()})::date))::int as days_since_last_run
     from activities
     where sport_type ilike '%run%'
   `;
 
-  const races = await sql<{ distance_m: number; official_time_s: number }[]>`
-    select distance_m, official_time_s from races`;
+  const races = await sql<{ distance_m: number; official_time_s: number; race_date: unknown }[]>`
+    select distance_m, official_time_s, race_date from races`;
   const bestVdot =
     races.length > 0 ? Math.max(...races.map((r) => vdotFromRace(r.distance_m, r.official_time_s))) : null;
   const vdotPaces = bestVdot ? trainingPaces(bestVdot) : null;
+  const freshAnchorCutoff = Date.now() - 180 * 86_400_000;
+  const hasFreshPerformanceAnchor = races.some(
+    (r) => Date.parse(`${dateOnly(r.race_date)}T00:00:00Z`) >= freshAnchorCutoff,
+  );
 
   // HR ceiling for easy running, from observed max HR.
   const hrRow = await sql<{ hr_max: number | null }[]>`
@@ -116,16 +122,16 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
   const paces = vdotPaces
     ? {
         easySecPerKm: observedEasySecPerKm ?? vdotPaces.easySecPerKm,
-        thresholdSecPerKm: vdotPaces.thresholdSecPerKm,
+        thresholdSecPerKm: hasFreshPerformanceAnchor ? vdotPaces.thresholdSecPerKm : null,
       }
     : observedEasySecPerKm
-      ? { easySecPerKm: observedEasySecPerKm, thresholdSecPerKm: observedEasySecPerKm * 0.82 }
+      ? { easySecPerKm: observedEasySecPerKm, thresholdSecPerKm: null }
       : null;
 
   const recentRow = recent[0]!;
   const runs28d = recentRow.runs_28d;
   const activeRunWeeks4 = completedWeeks.filter((w) => w.runs > 0).length;
-  const qualityShare28d = zones ? await recentThresholdTimeShare(sql, zones.threshold) : 0;
+  const qualityShare28d = zones ? await recentThresholdTimeShare(sql, zones.threshold) : null;
   const raceDays = daysToRace(new Date());
   const trainingPhase = selectTrainingPhase({
     daysToRace: raceDays,
@@ -179,7 +185,7 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
   };
 }
 
-async function recentThresholdTimeShare(sql: Sql, thresholdHr: number): Promise<number> {
+async function recentThresholdTimeShare(sql: Sql, thresholdHr: number): Promise<number | null> {
   const runs = await sql<
     {
       moving_time_s: number | null;
@@ -193,7 +199,7 @@ async function recentThresholdTimeShare(sql: Sql, thresholdHr: number): Promise<
     where a.sport_type ilike '%run%'
       and a.start_date >= now() - interval '28 days'
   `;
-  let totalS = 0;
+  let measuredS = 0;
   let thresholdS = 0;
   for (const run of runs) {
     const times = run.time_s;
@@ -201,15 +207,17 @@ async function recentThresholdTimeShare(sql: Sql, thresholdHr: number): Promise<
     if (times && hrs && times.length > 1 && hrs.length === times.length) {
       for (let i = 0; i < times.length - 1; i++) {
         const dt = Math.max(0, Math.min(30, times[i + 1]! - times[i]!));
-        totalS += dt;
-        if (hrs[i] != null && hrs[i]! >= thresholdHr) thresholdS += dt;
+        if (hrs[i] != null) {
+          measuredS += dt;
+          if (hrs[i]! >= thresholdHr) thresholdS += dt;
+        }
       }
-    } else if (run.moving_time_s && run.moving_time_s > 0) {
-      totalS += run.moving_time_s;
-      if (run.avg_hr != null && run.avg_hr >= thresholdHr) thresholdS += run.moving_time_s;
+    } else if (run.moving_time_s && run.moving_time_s > 0 && run.avg_hr != null) {
+      measuredS += run.moving_time_s;
+      if (run.avg_hr >= thresholdHr) thresholdS += run.moving_time_s;
     }
   }
-  return totalS > 0 ? thresholdS / totalS : 0;
+  return measuredS > 0 ? thresholdS / measuredS : null;
 }
 
 async function loadStrengthDays(sql: Sql): Promise<number[]> {

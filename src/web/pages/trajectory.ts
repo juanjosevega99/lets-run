@@ -1,5 +1,5 @@
 import { barChart } from "../svg.js";
-import { formatDuration } from "../../lib/time.js";
+import { dateInTimeZone, formatDuration } from "../../lib/time.js";
 import { esc } from "../html.js";
 import { RACE } from "../../lib/race.js";
 import type { WeekVolume, PredictionRow } from "../queries.js";
@@ -12,6 +12,7 @@ export interface TrajectoryData {
   weeks: WeekVolume[];
   peakAvgKm: number | null;
   predictions: PredictionRow[];
+  tz: string;
 }
 
 export function renderTrajectory(d: TrajectoryData): string {
@@ -37,7 +38,7 @@ export function renderTrajectory(d: TrajectoryData): string {
             p.intervalP10S != null && p.intervalP90S != null
               ? `${formatDuration(p.intervalP10S)}–${formatDuration(p.intervalP90S)}`
               : "";
-          return `<tr><td>${p.predictedAt.toISOString().slice(0, 10)}</td><td class="num">${formatDuration(p.predictedTimeS)}</td><td class="num">${band}</td><td><code>${esc(p.predictor)}</code></td></tr>`;
+          return `<tr><td>${dateInTimeZone(p.predictedAt, d.tz)}</td><td class="num">${formatDuration(p.predictedTimeS)}</td><td class="num">${band}</td><td><code>${esc(p.predictor)}</code></td></tr>`;
         })
         .join("")}</tbody>
     </table>`;

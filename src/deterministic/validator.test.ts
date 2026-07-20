@@ -133,4 +133,29 @@ describe("validateWeek (S2 hard rules)", () => {
     expect(rules).toContain("return_to_run_spacing");
     expect(rules).toContain("single_run_spike");
   });
+
+  it("rejects high-intensity zero-distance cross-training during return-to-run", () => {
+    const v = validateWeek({
+      sessions: [
+        easy(0, 3),
+        easy(2, 3),
+        easy(5, 4),
+        { day: 3, title: "Hard bike", intensity: "high", plannedKm: 0 },
+      ],
+      previousWeekKm: null,
+      trainingPhase: "return_to_run",
+      longestRunKm30d: 4,
+    });
+    expect(v.map((x) => x.rule)).toContain("return_to_run_intensity");
+  });
+
+  it("rejects lower-body strength on or immediately before the key run", () => {
+    const v = validateWeek({
+      sessions: legalWeek,
+      previousWeekKm: null,
+      keySessionDay: 6,
+      lowerBodyStrengthDays: [5],
+    });
+    expect(v.map((x) => x.rule)).toContain("lower_body_before_key");
+  });
 });

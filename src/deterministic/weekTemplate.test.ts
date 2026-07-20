@@ -101,6 +101,12 @@ describe("buildWeekTemplate — behavior", () => {
     }
   });
 
+  it("counts threshold warm-up and cool-down inside the planned session dose", () => {
+    const plan = buildWeekTemplate(baseInput({ limiter: "threshold", trainingPhase: "build" }));
+    expect(plan.key_session.description).toContain("total, including easy warm-up/cool-down");
+    expect(plan.key_session.description).not.toContain("not included");
+  });
+
   it("holds volume unless the previous review explicitly earned progression", () => {
     for (const previousDecision of [null, "REPEAT", "PROCEED"] as const) {
       const plan = buildWeekTemplate(baseInput({ previousWeekKm: 20, tsb: 0, previousDecision }));
@@ -261,5 +267,12 @@ describe("buildWeekTemplate — return-to-run and gym calendar", () => {
     expect(tuesday.filter((s) => s.title === "Strength training")).toHaveLength(1);
     expect(tuesday.some((s) => s.intensity === "rest")).toBe(false);
     expect(sessions.some((s) => s.intensity === "rest")).toBe(true);
+  });
+
+  it("reduces gym work when whole-program load is deeply negative", () => {
+    const plan = buildWeekTemplate(baseInput({ totalTsb: -30, strengthDays: [0], lowerBodyStrengthDays: [0] }));
+    const gym = plan.support_sessions.find((s) => s.title === "Lower-body strength");
+    expect(gym?.description).toContain("cut volume");
+    expect(gym?.description).toContain("3 reps in reserve");
   });
 });

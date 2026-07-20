@@ -31,11 +31,11 @@ export interface PlanContext {
   daysSinceLastRun: number | null;
   longestRunKm30d: number;
   longestRunKm120d: number;
-  qualityShare28d: number;
+  qualityShare28d: number | null;
   strengthDays: number[];
   lowerBodyStrengthDays: number[];
   previousDecision: WeekDecision | null;
-  paces: { easySecPerKm: number; thresholdSecPerKm: number } | null;
+  paces: { easySecPerKm: number; thresholdSecPerKm: number | null } | null;
   /**
    * Where the easy pace came from. "observed" = median pace of recent runs actually
    * run in the easy HR band (reflects CURRENT fitness). "vdot" = derived from the
@@ -67,6 +67,8 @@ export async function generateWeekPlan(llm: LlmCall, ctx: PlanContext): Promise<
       previousWeekKm: ctx.previousWeekKm,
       trainingPhase: ctx.trainingPhase,
       longestRunKm30d: ctx.longestRunKm30d,
+      keySessionDay: plan.key_session.day,
+      lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
     });
     if (violations.length === 0) {
       return { plan, attempts: attempt };
@@ -116,7 +118,9 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
   lines.push(
     `- longest run: ${ctx.longestRunKm30d.toFixed(1)}km in 30d (${ctx.longestRunKm120d.toFixed(1)}km in 120d)`,
   );
-  lines.push(`- threshold time share, last 28d: ${(ctx.qualityShare28d * 100).toFixed(1)}%`);
+  lines.push(
+    `- threshold time share, last 28d: ${ctx.qualityShare28d == null ? "unknown (insufficient measured HR)" : `${(ctx.qualityShare28d * 100).toFixed(1)}%`}`,
+  );
   if (ctx.strengthDays.length > 0) {
     lines.push(
       `- usual strength days (0=Mon): ${ctx.strengthDays.join(", ")}; lower-body days: ${ctx.lowerBodyStrengthDays.join(", ") || "not configured"}`,
@@ -134,8 +138,9 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
       ctx.paceSource === "observed"
         ? " (measured from recent runs in the easy HR band — reflects CURRENT fitness)"
         : " (derived from best-ever race — may be too fast while detrained; prefer the HR ceiling)";
+    lines.push(`- easy pace guide: ${paceStr(ctx.paces.easySecPerKm)}${provenance}`);
     lines.push(
-      `- training paces: easy ${paceStr(ctx.paces.easySecPerKm)}, threshold ${paceStr(ctx.paces.thresholdSecPerKm)}${provenance}`,
+      `- threshold pace: ${ctx.paces.thresholdSecPerKm == null ? "not prescribed — no fresh performance anchor; use controlled effort only" : paceStr(ctx.paces.thresholdSecPerKm)}`,
     );
   }
   if (ctx.easyHrCeiling != null) {

@@ -14,6 +14,7 @@ export interface PlannedSession {
   title: string;
   intensity: SessionIntensity;
   plannedKm: number; // 0 for rest / gym
+  plannedMinutes?: number;
 }
 
 export interface WeekPlanInput {
@@ -23,6 +24,8 @@ export interface WeekPlanInput {
   /** Optional coach-v2 readiness constraints. Legacy callers may omit them. */
   trainingPhase?: TrainingPhase;
   longestRunKm30d?: number;
+  keySessionDay?: number;
+  lowerBodyStrengthDays?: number[];
 }
 
 export type ViolationRule =
@@ -34,6 +37,7 @@ export type ViolationRule =
   | "return_to_run_intensity"
   | "return_to_run_spacing"
   | "single_run_spike"
+  | "lower_body_before_key"
   | "volume_progression"
   | "rest_day"
   | "polarized"
@@ -106,10 +110,10 @@ export function validateWeek(plan: WeekPlanInput): Violation[] {
         detail: `return-to-run requires exactly 3 running sessions; received ${runSessions.length}`,
       });
     }
-    if (runSessions.some((s) => s.intensity !== "low")) {
+    if (validDaySessions.some((s) => s.intensity === "high")) {
       v.push({
         rule: "return_to_run_intensity",
-        detail: "return-to-run permits easy running only; quality work must wait for continuity",
+        detail: "return-to-run permits easy training only; high-intensity running or cross-training must wait",
       });
     }
     const runDays = [...new Set(runSessions.map((s) => s.day))].sort((a, b) => a - b);
@@ -126,6 +130,16 @@ export function validateWeek(plan: WeekPlanInput): Violation[] {
       v.push({
         rule: "single_run_spike",
         detail: `longest planned run ${longestPlanned.toFixed(1)}km > return-to-run cap ${singleRunCap.toFixed(1)}km`,
+      });
+    }
+  }
+
+  if (plan.keySessionDay != null) {
+    const lower = new Set(plan.lowerBodyStrengthDays ?? []);
+    if (lower.has(plan.keySessionDay) || (plan.keySessionDay > 0 && lower.has(plan.keySessionDay - 1))) {
+      v.push({
+        rule: "lower_body_before_key",
+        detail: `lower-body strength is on or immediately before key-session day ${plan.keySessionDay}`,
       });
     }
   }

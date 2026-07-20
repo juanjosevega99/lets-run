@@ -34,7 +34,7 @@ export interface TrainingFocusInput extends TrainingPhaseInput {
   phase: TrainingPhase;
   longestRunKm30d: number;
   raceKm: number;
-  qualityShare28d: number;
+  qualityShare28d: number | null;
 }
 
 /**
@@ -77,6 +77,12 @@ export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
       reason: `longest recent run ${x.longestRunKm30d.toFixed(1)}km is below 60% of race distance`,
     };
   }
+  if (x.qualityShare28d == null) {
+    return {
+      limiter: "aerobic_base",
+      reason: "recent threshold exposure is unknown; keep effort controlled until a fresh measured anchor exists",
+    };
+  }
   if (x.qualityShare28d < 0.08) {
     return {
       limiter: "threshold",
@@ -89,14 +95,36 @@ export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
   };
 }
 
-export function phaseRunDays(phase: TrainingPhase): number[] {
-  switch (phase) {
-    case "return_to_run":
-      return [1, 3, 6]; // Tue / Thu / Sun: impact exposure separated by recovery
-    case "taper":
-      return [1, 3, 6];
-    default:
-      return [0, 2, 4, 6];
-  }
+export function phaseRunDays(phase: TrainingPhase, lowerBodyStrengthDays: number[] = []): number[] {
+  const defaults = phase === "return_to_run" || phase === "taper" ? [1, 3, 6] : [0, 2, 4, 6];
+  const lower = new Set(lowerBodyStrengthDays);
+  const requiresSpacing = defaults.length === 3;
+  const candidates = combinations([0, 1, 2, 3, 4, 5, 6], defaults.length).filter((days) => {
+    const keyDay = days.at(-1)!;
+    if (lower.has(keyDay) || (keyDay > 0 && lower.has(keyDay - 1))) return false;
+    return !requiresSpacing || days.every((day, i) => i === 0 || day - days[i - 1]! > 1);
+  });
+  if (candidates.length === 0) return defaults;
+  return candidates.reduce((best, days) =>
+    scheduleScore(days, defaults, lower) < scheduleScore(best, defaults, lower) ? days : best,
+  );
 }
 
+function combinations(values: number[], count: number): number[][] {
+  const out: number[][] = [];
+  const visit = (start: number, picked: number[]) => {
+    if (picked.length === count) {
+      out.push(picked);
+      return;
+    }
+    for (let i = start; i < values.length; i++) visit(i + 1, [...picked, values[i]!]);
+  };
+  visit(0, []);
+  return out;
+}
+
+function scheduleScore(days: number[], defaults: number[], lower: Set<number>): number {
+  const deviation = days.reduce((sum, day, i) => sum + Math.abs(day - defaults[i]!), 0);
+  const easyAfterLegs = days.slice(0, -1).filter((day) => day > 0 && lower.has(day - 1)).length;
+  return deviation + easyAfterLegs * 2;
+}

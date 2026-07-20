@@ -28,7 +28,7 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     totalAtl: ctx.totalAtl,
     totalTsb: ctx.totalTsb,
     previousDecision: ctx.previousDecision,
-    runDays: phaseRunDays(ctx.trainingPhase),
+    runDays: phaseRunDays(ctx.trainingPhase, ctx.lowerBodyStrengthDays),
     strengthDays: ctx.strengthDays,
     lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
     longestRunKm30d: ctx.longestRunKm30d,
@@ -42,6 +42,7 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     title: s.title,
     intensity: s.intensity,
     plannedKm: s.planned_km,
+    plannedMinutes: s.planned_minutes,
   }));
 
   const violations = validateWeek({
@@ -49,6 +50,8 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     previousWeekKm: ctx.previousWeekKm,
     trainingPhase: ctx.trainingPhase,
     longestRunKm30d: ctx.longestRunKm30d,
+    keySessionDay: plan.key_session.day,
+    lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
   });
   if (violations.length > 0) {
     // A template violating its own rules is a bug in weekTemplate.ts, not something to
@@ -76,8 +79,13 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
   log(`plan for week of ${weekStart} (coach-v2, zero cost):`);
   for (const s of [...sessions].sort((a, b) => a.day - b.day)) {
     const key = s.title === plan.key_session.title ? "  ★ KEY" : "";
+    const dose = s.plannedMinutes != null
+      ? `${s.plannedMinutes}min (~${s.plannedKm.toFixed(1)}km)`
+      : s.plannedKm > 0
+        ? `${s.plannedKm.toFixed(1)}km`
+        : "—";
     log(
-      `  ${DAY_NAMES[s.day]}  ${s.intensity.padEnd(5)}  ${s.plannedKm > 0 ? `${s.plannedKm.toFixed(1)}km` : "—"}  ${s.title}${key}`,
+      `  ${DAY_NAMES[s.day]}  ${s.intensity.padEnd(5)}  ${dose}  ${s.title}${key}`,
     );
   }
 }

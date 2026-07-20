@@ -1,5 +1,5 @@
 import { esc } from "../html.js";
-import { formatDuration, formatPace, isoDate } from "../../lib/time.js";
+import { dateInTimeZone, formatDuration, formatPace } from "../../lib/time.js";
 import { RACE } from "../../lib/race.js";
 import type { RecentSnapshot, RaceRow, PredictionRow, FitnessRow } from "../queries.js";
 
@@ -16,6 +16,7 @@ export interface NowData {
   latestActivityDate: Date | null;
   races: RaceRow[];
   now: Date;
+  tz: string;
 }
 
 export function renderNow(d: NowData): string {
@@ -27,14 +28,14 @@ export function renderNow(d: NowData): string {
     .join("");
 
   const prediction = d.latestPrediction
-    ? predictionBlock(d.latestPrediction)
+    ? predictionBlock(d.latestPrediction, d.tz)
     : `<p class="empty">No prediction yet. The predictor is the hand-written deterministic layer
        (F1) — once it exists and passes the F2 backtest, the current projected time and its
        P10–P90 band appear here, next to the gap to ${formatDuration(RACE.targetTimeS)}.</p>`;
 
   const s = d.snapshot;
   const freshness = d.latestActivityDate
-    ? `${esc(isoDate(d.latestActivityDate))} — press <strong>Sync &amp; replan</strong> above to pull newer training`
+    ? `${esc(dateInTimeZone(d.latestActivityDate, d.tz))} — press <strong>Sync &amp; replan</strong> above to pull newer training`
     : "no activities ingested";
 
   const raceRows = d.races
@@ -107,7 +108,7 @@ export function renderNow(d: NowData): string {
   </table>`;
 }
 
-function predictionBlock(p: PredictionRow): string {
+function predictionBlock(p: PredictionRow, tz: string): string {
   const gapS = p.predictedTimeS - RACE.targetTimeS;
   const gap =
     gapS <= 0
@@ -118,5 +119,5 @@ function predictionBlock(p: PredictionRow): string {
       ? ` <span class="sub">(${formatDuration(p.intervalP10S)} – ${formatDuration(p.intervalP90S)} historical model-error range${p.intervalSampleSize != null ? `, n=${p.intervalSampleSize}` : ""})</span>`
       : "";
   return `<p class="big">${formatDuration(p.predictedTimeS)}${band}</p>
-  <p>${gap} · if raced at today's estimated shape; this is not a forecast for race day · model: <code>${esc(p.predictor)}</code> · ${esc(isoDate(p.predictedAt))}</p>`;
+  <p>${gap} · if raced at today's estimated shape; this is not a forecast for race day · model: <code>${esc(p.predictor)}</code> · ${esc(dateInTimeZone(p.predictedAt, tz))}</p>`;
 }

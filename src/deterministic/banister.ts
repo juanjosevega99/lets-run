@@ -3,7 +3,7 @@
  *
  *   CTL_d = CTL_{d-1} + (load_d − CTL_{d-1}) / 42     (chronic "fitness", 42-day tc)
  *   ATL_d = ATL_{d-1} + (load_d − ATL_{d-1}) / 7      (acute "fatigue", 7-day tc)
- *   TSB_d = CTL_{d-1} − ATL_{d-1}                     (form going INTO day d)
+ *   TSB_d = CTL_d − ATL_d                             (post-day load balance)
  *
  * Coach v2 keeps like-with-like curves:
  *   - ctl/atl/tsb: running-specific load on BOTH sides of the form equation
@@ -27,7 +27,7 @@ export interface FitnessDay {
   day: string;
   ctl: number; // running fitness
   atl: number; // running-specific acute load
-  tsb: number; // running form: running CTL − running ATL, entering the day
+  tsb: number; // post-day running load balance: running CTL − running ATL
   aerobicCtl: number;
   aerobicAtl: number;
   totalCtl: number;
