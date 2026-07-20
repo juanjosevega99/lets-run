@@ -1,4 +1,5 @@
 import type { LimiterResult } from "./limiter.js";
+import { keyRunDay, lowerBodyConflictsWithKey } from "./schedule.js";
 
 /** Race-cycle phases used by the deterministic coach. */
 export type TrainingPhase = "return_to_run" | "base" | "build" | "race_specific" | "taper";
@@ -95,13 +96,21 @@ export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
   };
 }
 
-export function phaseRunDays(phase: TrainingPhase, lowerBodyStrengthDays: number[] = []): number[] {
+/**
+ * `allEasy` must match the template shape the plan will use (see `isAllEasyWeek`), so
+ * the scheduler protects the SAME key day the template keys and the validator checks.
+ * Defaults to true for legacy callers (all-easy is the conservative assumption).
+ */
+export function phaseRunDays(
+  phase: TrainingPhase,
+  lowerBodyStrengthDays: number[] = [],
+  allEasy = true,
+): number[] {
   const defaults = phase === "return_to_run" || phase === "taper" ? [1, 3, 6] : [0, 2, 4, 6];
   const lower = new Set(lowerBodyStrengthDays);
   const requiresSpacing = defaults.length === 3;
   const candidates = combinations([0, 1, 2, 3, 4, 5, 6], defaults.length).filter((days) => {
-    const keyDay = days.at(-1)!;
-    if (lower.has(keyDay) || (keyDay > 0 && lower.has(keyDay - 1))) return false;
+    if (lowerBodyConflictsWithKey(keyRunDay(days, allEasy), lower)) return false;
     return !requiresSpacing || days.every((day, i) => i === 0 || day - days[i - 1]! > 1);
   });
   if (candidates.length === 0) return defaults;

@@ -164,6 +164,16 @@ describe("validateWeek (S2 hard rules)", () => {
     expect(v.map((x) => x.rule)).toContain("lower_body_before_key");
   });
 
+  it("counts Sunday lower-body as immediately before a Monday key run (wraparound, red-team M3)", () => {
+    const v = validateWeek({
+      sessions: legalWeek,
+      previousWeekKm: null,
+      keySessionDay: 0, // Monday
+      lowerBodyStrengthDays: [6], // Sunday — the old keyDay-1 guard missed this
+    });
+    expect(v.map((x) => x.rule)).toContain("lower_body_before_key");
+  });
+
   it("requires configured strength days to retain an actual gym session", () => {
     const withGym = [...legalWeek, { day: 3, title: "Strength training", intensity: "low" as const, plannedKm: 0 }];
     expect(validateWeek({ sessions: withGym, previousWeekKm: null, requiredStrengthDays: [3] })).toEqual([]);

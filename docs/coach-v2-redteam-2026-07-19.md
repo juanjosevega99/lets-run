@@ -25,6 +25,14 @@
 - **Sunday-evening review grace** (`reviewCutoffForReplan`): a breakfast refresh can't
   mark Sunday's key run as missed.
 
+## Status (updated 2026-07-19, evening)
+
+**H1, H2, M3 are FIXED** (implemented + regression-tested; see `src/deterministic/schedule.ts`,
+`src/plan/redteam.test.ts`, `src/deterministic/schedule.test.ts`, and the validator/context
+edits). **Still open:** M1 (return→base 4-day cliff — needs Juan's "how many return weeks
+before 4 days" call), M2 (immutable plan revisions — schedule as its own task), L1–L3 cleanup,
+and L2 strength-day over-inference. The per-finding detail below is kept for the record.
+
 ## 2. Findings (ranked)
 
 ### H1 — Reachable hard crash: the scheduler protects the wrong "key day" · HIGH

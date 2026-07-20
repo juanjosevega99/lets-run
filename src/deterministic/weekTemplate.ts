@@ -12,6 +12,7 @@
 
 import type { Limiter } from "./limiter.js";
 import type { TrainingPhase } from "./trainingPhase.js";
+import { keyRunDay } from "./schedule.js";
 import type { WeekDecision } from "../plan/review.js";
 
 export interface TemplateSession {
@@ -103,7 +104,7 @@ function allEasyWeek(
   // Raw (unrounded) shares sum to exactly totalKm by construction; floor each one so
   // independent per-session rounding can never push the SUM over the +10% cap (rounding
   // each to nearest can — see weekTemplate.test.ts for the case that caught this).
-  const keyDay = x.runDays.at(-1) ?? 6;
+  const keyDay = keyRunDay(x.runDays, true);
   const easyDays = x.runDays.filter((d) => d !== keyDay);
   const rawKey = totalKm * LONG_RUN_SHARE_BASE;
   const sessionCap = x.longestRunKm30d > 0 ? x.longestRunKm30d * 1.1 : 4;
@@ -144,7 +145,7 @@ function returnToRunWeek(
   x: WeekTemplateInput,
 ): Omit<WeekTemplate, "explanation"> {
   const runDays = x.runDays.length > 0 ? x.runDays : [1, 3, 6];
-  const keyDay = runDays.at(-1) ?? 6;
+  const keyDay = keyRunDay(runDays, true);
   const easyDays = runDays.filter((day) => day !== keyDay);
   const ratios = runDays.length === 3 ? [0.27, 0.33, 0.4] : runDays.map(() => 1 / runDays.length);
   const minutesBase = [20, 25, 30];
@@ -187,7 +188,7 @@ function oneHighDayWeek(
   x: WeekTemplateInput,
 ): Omit<WeekTemplate, "explanation"> {
   // Same floor-the-exact-shares approach as allEasyWeek — see the comment there.
-  const keyDay = x.runDays.length >= 3 ? x.runDays[1]! : x.runDays[0] ?? 2;
+  const keyDay = keyRunDay(x.runDays, false);
   const longDay = x.runDays.at(-1) ?? 6;
   const easyDays = x.runDays.filter((d) => d !== keyDay && d !== longDay);
   const rawHigh = totalKm * HIGH_SESSION_SHARE;

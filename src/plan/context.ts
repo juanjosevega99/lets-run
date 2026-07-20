@@ -9,9 +9,8 @@ import { weeklyRunVolume, latestFitness, livePredictions, dashboardTz } from "..
 import { latestWeekDecision } from "./review.js";
 
 /** YYYY-MM-DD of the next Monday in the athlete's local timezone. Used as plan_week's key. */
-export function nextMonday(): string {
+export function nextMonday(now: Date = new Date()): string {
   const tz = dashboardTz();
-  const now = new Date();
   for (let i = 1; i <= 7; i++) {
     const d = new Date(now.getTime() + i * 86_400_000);
     const weekday = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: tz }).format(d);
@@ -23,9 +22,8 @@ export function nextMonday(): string {
 }
 
 /** Monday of the athlete's current local week. */
-export function currentMonday(): string {
+export function currentMonday(now: Date = new Date()): string {
   const tz = dashboardTz();
-  const now = new Date();
   for (let i = 0; i <= 6; i++) {
     const d = new Date(now.getTime() - i * 86_400_000);
     const weekday = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: tz }).format(d);
@@ -35,8 +33,7 @@ export function currentMonday(): string {
 }
 
 /** Sunday-evening replans may review the week that just finished; midweek replans may not. */
-export function reviewCutoffForReplan(): string {
-  const now = new Date();
+export function reviewCutoffForReplan(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en", {
     weekday: "short",
     hour: "numeric",
@@ -46,7 +43,17 @@ export function reviewCutoffForReplan(): string {
   const weekday = parts.find((p) => p.type === "weekday")?.value;
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
   // Do not mark Sunday's key run missed because somebody refreshed at breakfast.
-  return weekday === "Sun" && hour >= 18 ? nextMonday() : currentMonday();
+  return weekday === "Sun" && hour >= 18 ? nextMonday(now) : currentMonday(now);
+}
+
+/**
+ * On Sunday evening the current calendar week is essentially finished, so it should be
+ * the progression baseline for next week — matching the review, which evaluates that
+ * same just-finished week. Midweek it is still in progress and must not be the baseline.
+ * (Red-team H2: without this, a Sunday replan baselined next week on TWO weeks ago.)
+ */
+export function currentWeekIsComplete(now: Date = new Date()): boolean {
+  return reviewCutoffForReplan(now) === nextMonday(now);
 }
 
 /**
@@ -58,8 +65,9 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
   const fitness = await latestFitness(sql);
   if (!fitness) throw new Error("fitness_state is empty — run `npm run fitness:rebuild` first");
 
-  const weeks = await weeklyRunVolume(sql, 5); // current week + 4 full weeks
-  const completedWeeks = weeks.slice(0, -1);
+  const weeks = await weeklyRunVolume(sql, 5); // ends with the current (local) week
+  // On Sunday evening the current week counts as finished; otherwise drop it as in-progress.
+  const completedWeeks = currentWeekIsComplete() ? weeks : weeks.slice(0, -1);
   const previousWeekKm = completedWeeks.at(-1)?.km ?? null;
 
   const recent = await sql<

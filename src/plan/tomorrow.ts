@@ -3,6 +3,7 @@ import { connect } from "../db.js";
 import { buildPlanContext } from "./context.js";
 import { formatDuration } from "../lib/time.js";
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
+import { isAllEasyWeek } from "../deterministic/schedule.js";
 import { RUNNING_LOAD_GUARDRAIL } from "../deterministic/weekTemplate.js";
 
 /**
@@ -44,7 +45,11 @@ async function main() {
       paces: ctx.paces,
       easyHrCeiling: ctx.easyHrCeiling,
       day: isoWeekday,
-      runDays: phaseRunDays(ctx.trainingPhase, ctx.lowerBodyStrengthDays),
+      runDays: phaseRunDays(
+        ctx.trainingPhase,
+        ctx.lowerBodyStrengthDays,
+        isAllEasyWeek(ctx.trainingPhase, ctx.limiter.limiter),
+      ),
       strengthDays: ctx.strengthDays,
     })) {
       console.log(`  ${line}`);

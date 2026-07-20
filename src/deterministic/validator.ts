@@ -1,4 +1,5 @@
 import type { TrainingPhase } from "./trainingPhase.js";
+import { lowerBodyConflictsWithKey } from "./schedule.js";
 
 /**
  * S2 hard-rule plan validator (PROJECT.md §4). These rules are inviolable: the LLM's
@@ -140,11 +141,10 @@ export function validateWeek(plan: WeekPlanInput): Violation[] {
   }
 
   if (plan.keySessionDay != null) {
-    const lower = new Set(plan.lowerBodyStrengthDays ?? []);
-    if (lower.has(plan.keySessionDay) || (plan.keySessionDay > 0 && lower.has(plan.keySessionDay - 1))) {
+    if (lowerBodyConflictsWithKey(plan.keySessionDay, plan.lowerBodyStrengthDays ?? [])) {
       v.push({
         rule: "lower_body_before_key",
-        detail: `lower-body strength is on or immediately before key-session day ${plan.keySessionDay}`,
+        detail: `lower-body strength is on or immediately before key-session day ${plan.keySessionDay} (Sunday→Monday counts as adjacent)`,
       });
     }
   }

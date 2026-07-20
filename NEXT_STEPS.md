@@ -66,13 +66,13 @@ green recovery signal.
 
 | doc | what | status |
 |---|---|---|
-| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **2 HIGH findings: H1 = reachable pipeline crash once `ATHLETE_LOWER_BODY_DAYS` is set and the phase leaves all-easy weeks; H2 = Sunday-evening replans baseline volume on week−2.** Fix order inside. | findings → fix next |
+| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1 (crash), H2 (wrong baseline), M3 (wraparound) FIXED + regression-tested 2026-07-19.** Open: M1 (return→base 4-day cliff, needs a decision), M2 (immutable plan revisions), L1–L3. | H1/H2/M3 done |
 | `docs/p0-checkin-implementation.md` | Post-session check-in that unlocks PROGRESS/DELOAD | spec ready |
 | `docs/p1-forecast-implementation.md` | Anchored performance state + freshness-aware intervals + scenario forecast | spec ready |
 | `docs/p1.5-training-anchors-implementation.md` | Mine streams for max-effort anchors (depends on P1) | spec ready |
 | `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach (P-SAFE-1 is the permanent regression net for red-team H1) | spec ready |
 
-Suggested order: **red-team H1+H2+M3 fixes → P0 → F4 → P1 → P1.5.**
+Suggested order: **~~red-team H1+H2+M3~~ (done) → red-team M1 (decision needed) → P0 → F4 → P1 → P1.5.**
 
 ## Highest-priority product gaps
 

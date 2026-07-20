@@ -2,6 +2,7 @@ import type { Sql } from "../db.js";
 import { buildPlanContext, nextMonday, reviewCutoffForReplan } from "./context.js";
 import { buildWeekTemplate, plannedRunVolumeCeiling } from "../deterministic/weekTemplate.js";
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
+import { isAllEasyWeek } from "../deterministic/schedule.js";
 import { validateWeek, type PlannedSession } from "../deterministic/validator.js";
 import type { Log } from "../strava/sync.js";
 import { reviewLatestCompletedWeek } from "./review.js";
@@ -33,7 +34,11 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     totalAtl: ctx.totalAtl,
     totalTsb: ctx.totalTsb,
     previousDecision: ctx.previousDecision,
-    runDays: phaseRunDays(ctx.trainingPhase, ctx.lowerBodyStrengthDays),
+    runDays: phaseRunDays(
+      ctx.trainingPhase,
+      ctx.lowerBodyStrengthDays,
+      isAllEasyWeek(ctx.trainingPhase, ctx.limiter.limiter),
+    ),
     strengthDays: ctx.strengthDays,
     lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
     longestRunKm30d: ctx.longestRunKm30d,
