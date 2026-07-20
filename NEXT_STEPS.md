@@ -62,6 +62,18 @@ Without those signals the software can measure completion and external load, but
 cannot know whether impact was tolerated. Missing feedback must never be treated as a
 green recovery signal.
 
+## Spec & review library (Fable-written, cheap-model-implementable)
+
+| doc | what | status |
+|---|---|---|
+| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **2 HIGH findings: H1 = reachable pipeline crash once `ATHLETE_LOWER_BODY_DAYS` is set and the phase leaves all-easy weeks; H2 = Sunday-evening replans baseline volume on week−2.** Fix order inside. | findings → fix next |
+| `docs/p0-checkin-implementation.md` | Post-session check-in that unlocks PROGRESS/DELOAD | spec ready |
+| `docs/p1-forecast-implementation.md` | Anchored performance state + freshness-aware intervals + scenario forecast | spec ready |
+| `docs/p1.5-training-anchors-implementation.md` | Mine streams for max-effort anchors (depends on P1) | spec ready |
+| `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach (P-SAFE-1 is the permanent regression net for red-team H1) | spec ready |
+
+Suggested order: **red-team H1+H2+M3 fixes → P0 → F4 → P1 → P1.5.**
+
 ## Highest-priority product gaps
 
 ### P0 — close the real feedback loop

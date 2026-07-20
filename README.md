@@ -78,12 +78,9 @@ screen. The Basic Auth prompt is the dashboard password.
    the Strava variables, athlete profile variables, and `DASHBOARD_TZ` for **Production**.
    Preview deployments should use a separate database
    (or be disabled) so a pull request cannot write to production training data.
-4. Add these GitHub repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and
-   `VERCEL_PROJECT_ID`.
-
-The workflows in `.github/workflows/` run typechecks/tests and deploy pull requests as
-previews. A push to `main` creates the production deployment. Vercel's Git integration
-can also deploy automatically if you prefer to omit the release workflow. The refresh
+Vercel's Git integration deploys commits automatically: pull requests receive previews
+and a push to `main` creates the production deployment. The GitHub workflow only runs
+typechecks and tests. The refresh
 endpoint is protected, POST-only, and has a 60-second function limit; a long Strava sync
 may later be better moved to a background job.
 
