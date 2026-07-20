@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { connect } from "../db.js";
 import { layout } from "./layout.js";
 import { isAuthorized } from "./auth.js";
@@ -41,7 +43,16 @@ const sql = connect();
  */
 let refreshInFlight = false;
 
-const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+export async function requestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  res.setHeader("cache-control", "private, no-store");
+
+  // A missing password must never accidentally publish the private dashboard.
+  if (process.env.VERCEL === "1" && !PASSWORD) {
+    res.writeHead(503, { "content-type": "text/plain" });
+    res.end("DASHBOARD_PASSWORD is required on Vercel");
+    return;
+  }
+
   if (PASSWORD && !isAuthorized(req.headers.authorization, PASSWORD)) {
     res.writeHead(401, {
       "www-authenticate": 'Basic realm="lets-run"',
@@ -51,7 +62,10 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     return;
   }
 
-  const path = (req.url ?? "/").split("?")[0];
+  const requestUrl = new URL(req.url ?? "/", "http://localhost");
+  // Vercel rewrites preserve the public route in ?path=... while local requests
+  // continue to use their normal pathname.
+  const path = requestUrl.searchParams.get("path") ?? requestUrl.pathname;
 
   // The one write endpoint: sync → fitness → plan. POST only, so a stray GET
   // (prefetch, crawler, refresh) can never mutate training data.
@@ -95,7 +109,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     res.writeHead(500, { "content-type": "text/plain" });
     res.end(`error: ${(err as Error).message}`);
   }
-});
+}
 
 async function route(path: string): Promise<string | null> {
   const now = new Date();
@@ -153,7 +167,12 @@ async function route(path: string): Promise<string | null> {
   }
 }
 
-server.listen(PORT, () => {
-  console.log(`lets-run web → http://localhost:${PORT}  (${RACE.bracket}, ${daysToRace(new Date())} days to race)`);
-  if (!PASSWORD) console.log("DASHBOARD_PASSWORD not set — auth gate off (fine locally, required before deploy)");
-});
+const server = createServer(requestHandler);
+const isMainModule = process.argv[1] != null && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (isMainModule) {
+  server.listen(PORT, () => {
+    console.log(`lets-run web → http://localhost:${PORT}  (${RACE.bracket}, ${daysToRace(new Date())} days to race)`);
+    if (!PASSWORD) console.log("DASHBOARD_PASSWORD not set — auth gate off (fine locally, required before deploy)");
+  });
+}

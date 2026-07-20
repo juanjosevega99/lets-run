@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/api?path=/" },
+    { "source": "/week", "destination": "/api?path=/week" },
+    { "source": "/trajectory", "destination": "/api?path=/trajectory" },
+    { "source": "/actions/refresh", "destination": "/api?path=/actions/refresh" }
+  ]
+}

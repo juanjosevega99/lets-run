@@ -3,6 +3,7 @@ import { connect } from "../db.js";
 import { buildPlanContext } from "./context.js";
 import { formatDuration } from "../lib/time.js";
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
+import { RUNNING_LOAD_GUARDRAIL } from "../deterministic/weekTemplate.js";
 
 /**
  * A single day's suggestion with ZERO LLM calls — for when ANTHROPIC_API_KEY isn't
@@ -28,7 +29,7 @@ async function main() {
     console.log(`${ctx.raceName} — ${ctx.daysToRace} days to go`);
     console.log(`limiter: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
     console.log(
-      `load: running chronic ${ctx.ctl.toFixed(1)} · running acute ${ctx.atl.toFixed(1)} · running balance ${ctx.tsb.toFixed(1)} · whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"}`,
+      `load: running chronic ${ctx.ctl.toFixed(1)} · running acute ${ctx.atl.toFixed(1)} · running balance ${ctx.tsb.toFixed(1)} · aerobic balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"} · whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"} (context only)`,
     );
     if (ctx.predictedTimeS != null) {
       console.log(`current-shape estimate: ${formatDuration(ctx.predictedTimeS)} (target ${formatDuration(ctx.targetTimeS)})`);
@@ -78,7 +79,7 @@ function suggest(x: {
   // Running/aerobic imbalance can reflect run/ride/swim fatigue. Whole-program
   // balance is deliberately excluded: a generic gym-duration estimate alone is
   // not evidence that running readiness is impaired.
-  if (Math.min(x.runningTsb, x.aerobicTsb ?? x.runningTsb) < -25) {
+  if (Math.min(x.runningTsb, x.aerobicTsb ?? x.runningTsb) < RUNNING_LOAD_GUARDRAIL) {
     return [
       `Running/aerobic load is elevated. Keep the prescribed dose reduced and do not add training.`,
       x.runDays.includes(x.day)

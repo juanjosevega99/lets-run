@@ -65,6 +65,29 @@ Set `DASHBOARD_PASSWORD` to enable the single-user auth gate — required before
 anywhere public. `DASHBOARD_TZ` (default `America/Bogota`) controls activity-day, fitness,
 plan-week, and compliance bucketing.
 
+## Vercel release and phone access
+
+The app can run as a Vercel Node function, with Supabase Postgres holding all durable
+training data. After the one-time setup below, the laptop is not needed to view the
+dashboard: open the project's `*.vercel.app` URL on your phone and save it to the home
+screen. The Basic Auth prompt is the dashboard password.
+
+1. Import the repository into Vercel and link it to the project (`VERCEL_ORG_ID` and
+   `VERCEL_PROJECT_ID` are available from the Vercel CLI/project settings).
+2. Run `npm run migrate` once with the production `DATABASE_URL` before the first deploy.
+3. In Vercel → Project Settings → Environment Variables, add `DATABASE_URL`,
+   `DASHBOARD_PASSWORD`, the Strava variables, athlete profile variables, and
+   `DASHBOARD_TZ` for **Production**. Preview deployments should use a separate database
+   (or be disabled) so a pull request cannot write to production training data.
+4. Add these GitHub repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and
+   `VERCEL_PROJECT_ID`.
+
+The workflows in `.github/workflows/` run typechecks/tests and deploy pull requests as
+previews. A push to `main` creates the production deployment. Vercel's Git integration
+can also deploy automatically if you prefer to omit the release workflow. The refresh
+endpoint is protected, POST-only, and has a 60-second function limit; a long Strava sync
+may later be better moved to a background job.
+
 ## Development
 
 - `npm test` — unit tests

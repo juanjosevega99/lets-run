@@ -62,14 +62,13 @@ const DEFAULT_STARTING_KM = 12;
 const HIGH_SESSION_SHARE = 0.18; // well under the validator's 25% high-intensity ceiling
 const LONG_RUN_SHARE_BASE = 0.3; // aerobic_base / long_endurance key session
 const LONG_RUN_SHARE_SUPPORT = 0.28; // long run as a support session (threshold/race_specific weeks)
+export const RUNNING_LOAD_GUARDRAIL = -20;
 
 export function buildWeekTemplate(x: WeekTemplateInput): WeekTemplate {
-  const defaultKm = x.trainingPhase === "return_to_run" ? DEFAULT_RETURN_KM : DEFAULT_STARTING_KM;
-  const baseline = x.previousWeekKm && x.previousWeekKm > 0 ? x.previousWeekKm : defaultKm;
   // Progression is earned by completed training, not granted automatically. Running
   // TSB is a guardrail only; total multi-sport acute load is reported separately.
-  const progression = progressionFor(x);
-  const totalKm = round1(baseline * progression);
+  const progression = runningProgressionFactor(x);
+  const totalKm = plannedRunVolumeCeiling(x);
 
   const isAllEasy =
     x.trainingPhase === "return_to_run" || x.limiter === "aerobic_base" || x.limiter === "long_endurance";
@@ -283,12 +282,15 @@ function easyEffort(x: WeekTemplateInput): string {
   return `fully conversational effort${pace ? `, roughly ${pace}` : ""}.`;
 }
 
-function progressionFor(x: WeekTemplateInput): number {
+/** Shared controller used by deterministic and LLM-backed plan paths. */
+export function runningProgressionFactor(
+  x: Pick<WeekTemplateInput, "trainingPhase" | "tsb" | "aerobicTsb" | "previousDecision">,
+): number {
   if (x.trainingPhase === "taper") return 0.75;
   // Generic gym duration contributes to totalTsb but cannot tell us whether the
   // runner's legs are ready. Running/aerobic balance may guard progression; gym
   // only does so later through an explicit DELOAD/red flag or readiness signal.
-  if (x.tsb < -20 || (x.aerobicTsb != null && x.aerobicTsb < -25)) return 0.9;
+  if (x.tsb < RUNNING_LOAD_GUARDRAIL || (x.aerobicTsb != null && x.aerobicTsb < RUNNING_LOAD_GUARDRAIL)) return 0.9;
   switch (x.previousDecision) {
     case "PROGRESS":
       return 1.05;
@@ -299,6 +301,15 @@ function progressionFor(x: WeekTemplateInput): number {
     case null:
       return 1;
   }
+}
+
+/** Exact weekly running ceiling shared by both planner implementations. */
+export function plannedRunVolumeCeiling(
+  x: Pick<WeekTemplateInput, "trainingPhase" | "previousWeekKm" | "tsb" | "aerobicTsb" | "previousDecision">,
+): number {
+  const defaultKm = x.trainingPhase === "return_to_run" ? DEFAULT_RETURN_KM : DEFAULT_STARTING_KM;
+  const baseline = x.previousWeekKm != null && x.previousWeekKm > 0 ? x.previousWeekKm : defaultKm;
+  return round1(baseline * runningProgressionFactor(x));
 }
 
 /** "7:20/km" — no leading " @ ", for use mid-sentence. */

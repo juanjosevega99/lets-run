@@ -66,6 +66,11 @@ green recovery signal.
 
 ### P0 — close the real feedback loop
 
+> **Implementation spec ready:** `docs/p0-checkin-implementation.md` — self-contained
+> handoff (evidence, locked policy, file-by-file plan, tests, runbook). Two artifacts
+> already in the tree: `migrations/005_session_feedback.sql` (not yet applied) and
+> `src/plan/feedback.ts` (policy + form parser, needs its tests).
+
 - Add activity/session feedback and surface medical stop flags.
 - Match planned and actual sessions with stable IDs, discipline, duration, purpose, and
   required/optional role.

@@ -1,6 +1,6 @@
 import type { Sql } from "../db.js";
 import { buildPlanContext, nextMonday, reviewCutoffForReplan } from "./context.js";
-import { buildWeekTemplate } from "../deterministic/weekTemplate.js";
+import { buildWeekTemplate, plannedRunVolumeCeiling } from "../deterministic/weekTemplate.js";
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
 import { validateWeek, type PlannedSession } from "../deterministic/validator.js";
 import type { Log } from "../strava/sync.js";
@@ -18,6 +18,10 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
   const ctx = await buildPlanContext(sql);
   log(`phase: ${ctx.trainingPhase}`);
   log(`limiter: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
+  const maxPlannedRunKm = plannedRunVolumeCeiling(ctx);
+  log(
+    `controller: running ceiling ${maxPlannedRunKm.toFixed(1)}km · running balance ${ctx.tsb.toFixed(1)} · aerobic balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"} · whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"} (context only)`,
+  );
 
   const plan = buildWeekTemplate({
     limiter: ctx.limiter.limiter,
@@ -50,9 +54,11 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     sessions,
     previousWeekKm: ctx.previousWeekKm,
     trainingPhase: ctx.trainingPhase,
+    maxPlannedRunKm,
     longestRunKm30d: ctx.longestRunKm30d,
     keySessionDay: plan.key_session.day,
     lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
+    requiredStrengthDays: ctx.strengthDays,
   });
   if (violations.length > 0) {
     // A template violating its own rules is a bug in weekTemplate.ts, not something to

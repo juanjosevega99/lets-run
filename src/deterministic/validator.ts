@@ -23,9 +23,13 @@ export interface WeekPlanInput {
   previousWeekKm: number | null;
   /** Optional coach-v2 readiness constraints. Legacy callers may omit them. */
   trainingPhase?: TrainingPhase;
+  /** Deterministic controller ceiling; stricter than the legacy +10% cap when supplied. */
+  maxPlannedRunKm?: number | null;
   longestRunKm30d?: number;
   keySessionDay?: number;
   lowerBodyStrengthDays?: number[];
+  /** Days that must retain a zero-distance strength/cross-training session. */
+  requiredStrengthDays?: number[];
 }
 
 export type ViolationRule =
@@ -38,6 +42,7 @@ export type ViolationRule =
   | "return_to_run_spacing"
   | "single_run_spike"
   | "lower_body_before_key"
+  | "missing_strength_day"
   | "volume_progression"
   | "rest_day"
   | "polarized"
@@ -144,13 +149,34 @@ export function validateWeek(plan: WeekPlanInput): Violation[] {
     }
   }
 
-  // 1 — weekly volume progression <= 10%
-  if (plan.previousWeekKm != null && plan.previousWeekKm > 0) {
-    const limit = plan.previousWeekKm * MAX_WEEKLY_PROGRESSION;
+  for (const day of [...new Set(plan.requiredStrengthDays ?? [])]) {
+    const hasStrength = validDaySessions.some(
+      (session) =>
+        session.day === day &&
+        session.intensity === "low" &&
+        session.plannedKm === 0 &&
+        /strength|gym|lift|weight/i.test(session.title),
+    );
+    if (!hasStrength) {
+      v.push({
+        rule: "missing_strength_day",
+        detail: `configured strength day ${day} is missing a zero-distance low-intensity session`,
+      });
+    }
+  }
+
+  // 1 — deterministic controller ceiling when available, otherwise legacy <=10%.
+  const limit =
+    plan.maxPlannedRunKm != null
+      ? plan.maxPlannedRunKm
+      : plan.previousWeekKm != null && plan.previousWeekKm > 0
+        ? plan.previousWeekKm * MAX_WEEKLY_PROGRESSION
+        : null;
+  if (limit != null) {
     if (totalKm > limit + 1e-9) {
       v.push({
         rule: "volume_progression",
-        detail: `planned ${totalKm.toFixed(1)}km > ${limit.toFixed(1)}km (prev ${plan.previousWeekKm.toFixed(1)}km +10%)`,
+        detail: `planned ${totalKm.toFixed(1)}km > deterministic ceiling ${limit.toFixed(1)}km`,
       });
     }
   }

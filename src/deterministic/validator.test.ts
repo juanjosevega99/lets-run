@@ -27,6 +27,11 @@ describe("validateWeek (S2 hard rules)", () => {
     expect(v.map((x) => x.rule)).toContain("volume_progression");
   });
 
+  it("honors a stricter deterministic running-volume ceiling", () => {
+    const v = validateWeek({ sessions: legalWeek, previousWeekKm: 38, maxPlannedRunKm: 39 });
+    expect(v.map((x) => x.rule)).toContain("volume_progression");
+  });
+
   it("skips the progression rule without a baseline week", () => {
     expect(validateWeek({ sessions: legalWeek, previousWeekKm: null })).toEqual([]);
   });
@@ -157,5 +162,12 @@ describe("validateWeek (S2 hard rules)", () => {
       lowerBodyStrengthDays: [5],
     });
     expect(v.map((x) => x.rule)).toContain("lower_body_before_key");
+  });
+
+  it("requires configured strength days to retain an actual gym session", () => {
+    const withGym = [...legalWeek, { day: 3, title: "Strength training", intensity: "low" as const, plannedKm: 0 }];
+    expect(validateWeek({ sessions: withGym, previousWeekKm: null, requiredStrengthDays: [3] })).toEqual([]);
+    const missing = validateWeek({ sessions: withGym, previousWeekKm: null, requiredStrengthDays: [5] });
+    expect(missing.map((x) => x.rule)).toContain("missing_strength_day");
   });
 });

@@ -2,6 +2,7 @@ import { validateWeek, type Violation } from "../deterministic/validator.js";
 import type { LimiterResult } from "../deterministic/limiter.js";
 import type { TrainingPhase } from "../deterministic/trainingPhase.js";
 import { formatDuration } from "../lib/time.js";
+import { plannedRunVolumeCeiling } from "../deterministic/weekTemplate.js";
 import { toValidatorSessions, type GeneratedPlan } from "./schema.js";
 import type { WeekDecision } from "./review.js";
 
@@ -61,15 +62,18 @@ export interface PlanGenerationResult {
 
 export async function generateWeekPlan(llm: LlmCall, ctx: PlanContext): Promise<PlanGenerationResult> {
   let violations: Violation[] = [];
+  const maxPlannedRunKm = plannedRunCeiling(ctx);
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const plan = await llm(SYSTEM_PROMPT, buildUserPrompt(ctx, violations));
     violations = validateWeek({
       sessions: toValidatorSessions(plan),
       previousWeekKm: ctx.previousWeekKm,
       trainingPhase: ctx.trainingPhase,
+      maxPlannedRunKm,
       longestRunKm30d: ctx.longestRunKm30d,
       keySessionDay: plan.key_session.day,
       lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,
+      requiredStrengthDays: ctx.strengthDays,
     });
     if (violations.length === 0) {
       return { plan, attempts: attempt };
@@ -89,7 +93,8 @@ plain, motivating language. You never change the target or bend a rule. The runn
 experienced (returning) runner training for a trail half marathon.
 
 HARD RULES the week MUST satisfy (a validator rejects violations):
-1. Total planned km may exceed last week's actual km by AT MOST 10%.
+1. Total planned running must not exceed the deterministic ceiling supplied below
+   (and can never exceed last week's actual km by more than 10%).
 2. At least one day (0-6) with NO session at all — a full rest day.
 3. At least 75% of total planned km at "low" intensity.
 4. No two "high" intensity sessions on consecutive days.
@@ -100,8 +105,8 @@ Structure: exactly one key session (the limiter-targeting session — intensity 
 or, for pure base/long weeks, "low"), plus support sessions. Days: 0=Monday .. 6=Sunday.
 Cross-training/gym may appear as sessions with planned_km 0 and intensity "low". Preserve
 the runner's listed gym days and never guess which are lower-body when not configured.
-Whole-program balance is context only: never reduce running or gym from that number alone;
-only running/aerobic load and explicit soreness, pain, or a prior DELOAD may constrain work.
+Generic gym-derived load is not a readiness signal. Only the deterministic running-volume
+ceiling below, explicit soreness/pain, or a prior DELOAD may constrain running.
 The explanation is one short paragraph: why THIS week, tied to the limiter and the numbers.`;
 
 export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[]): string {
@@ -110,9 +115,9 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
   lines.push(`- training phase: ${ctx.trainingPhase}`);
   lines.push(`- limiter to target: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
   lines.push(`- running state: CTL ${ctx.ctl.toFixed(1)}, ATL ${ctx.atl.toFixed(1)}, TSB ${ctx.tsb.toFixed(1)}`);
-  if (ctx.aerobicCtl != null || ctx.totalAtl != null) {
+  if (ctx.aerobicCtl != null || ctx.aerobicTsb != null) {
     lines.push(
-      `- cross-training context: aerobic CTL ${ctx.aerobicCtl?.toFixed(1) ?? "unknown"}, aerobic load balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"}, total acute load ${ctx.totalAtl?.toFixed(1) ?? "unknown"}, whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"} (context only; generic gym duration is not a readiness signal)`,
+      `- aerobic cross-training context: CTL ${ctx.aerobicCtl?.toFixed(1) ?? "unknown"}, load balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"}`,
     );
   }
   lines.push(
@@ -136,6 +141,8 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
   lines.push(
     `- last week's actual volume: ${ctx.previousWeekKm != null ? `${ctx.previousWeekKm.toFixed(1)} km (10% rule baseline)` : "none — no progression cap this week, still be conservative"}`,
   );
+  const ceiling = plannedRunCeiling(ctx);
+  if (ceiling != null) lines.push(`- deterministic running-volume ceiling: ${ceiling.toFixed(1)} km — do not exceed`);
   if (ctx.paces) {
     const provenance =
       ctx.paceSource === "observed"
@@ -163,6 +170,16 @@ export function buildUserPrompt(ctx: PlanContext, previousViolations: Violation[
   lines.push("");
   lines.push(`Design next week's plan.`);
   return lines.join("\n");
+}
+
+export function plannedRunCeiling(ctx: PlanContext): number {
+  return plannedRunVolumeCeiling({
+    trainingPhase: ctx.trainingPhase,
+    previousWeekKm: ctx.previousWeekKm,
+    tsb: ctx.tsb,
+    aerobicTsb: ctx.aerobicTsb,
+    previousDecision: ctx.previousDecision,
+  });
 }
 
 function paceStr(secPerKm: number): string {

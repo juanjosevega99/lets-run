@@ -6,6 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "build": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
