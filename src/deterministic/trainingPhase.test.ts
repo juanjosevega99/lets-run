@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { phaseRunDays, selectTrainingFocus, selectTrainingPhase } from "./trainingPhase.js";
+import {
+  phaseRunDays,
+  selectTrainingFocus,
+  selectTrainingPhase,
+  targetRunDays,
+  RUN_DAY_STEP_UP_RUNS_28D,
+} from "./trainingPhase.js";
+import { keyRunDay, lowerBodyConflictsWithKey } from "./schedule.js";
 
 describe("selectTrainingPhase", () => {
   it("puts an athlete with a long running gap into return-to-run regardless of the calendar", () => {
@@ -62,5 +69,38 @@ describe("selectTrainingFocus", () => {
     const result = selectTrainingFocus({ ...common, phase: "build", qualityShare28d: null });
     expect(result.limiter).toBe("aerobic_base");
     expect(result.reason).toContain("unknown");
+  });
+});
+
+describe("run-day step-up (red-team M1)", () => {
+  it("holds 3 run days through early base until running is well established", () => {
+    expect(targetRunDays("return_to_run", 20)).toBe(3);
+    expect(targetRunDays("taper", 20)).toBe(3);
+    expect(targetRunDays("base", RUN_DAY_STEP_UP_RUNS_28D - 1)).toBe(3); // just off the comeback
+    expect(targetRunDays("base", RUN_DAY_STEP_UP_RUNS_28D)).toBe(4); // established → step up
+    expect(targetRunDays("base", undefined)).toBe(4); // legacy callers unchanged
+  });
+
+  it("phaseRunDays follows the step-up: 3 days when barely returned, 4 once established", () => {
+    expect(phaseRunDays("base", [], true, 9)).toHaveLength(3);
+    expect(phaseRunDays("base", [], true, 20)).toHaveLength(4);
+  });
+});
+
+describe("four-day spacing (red-team M1)", () => {
+  it("prefers the fully-spaced [0,2,4,6] when nothing blocks it", () => {
+    expect(phaseRunDays("build", [], false, 20)).toEqual([0, 2, 4, 6]);
+  });
+
+  it("stays 4 days and always keeps the key run clear of lower-body, whatever the lower-body day", () => {
+    // The crash-safety guarantee (a lower-body/key conflict makes generation throw).
+    for (let lower = 0; lower <= 6; lower++) {
+      const days = phaseRunDays("build", [lower], false, 20);
+      expect(days, `lower=${lower}`).toHaveLength(4);
+      expect(
+        lowerBodyConflictsWithKey(keyRunDay(days, false), new Set([lower])),
+        `lower=${lower} key=${keyRunDay(days, false)}`,
+      ).toBe(false);
+    }
   });
 });

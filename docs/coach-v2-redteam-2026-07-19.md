@@ -27,11 +27,22 @@
 
 ## Status (updated 2026-07-19, evening)
 
-**H1, H2, M3 are FIXED** (implemented + regression-tested; see `src/deterministic/schedule.ts`,
-`src/plan/redteam.test.ts`, `src/deterministic/schedule.test.ts`, and the validator/context
-edits). **Still open:** M1 (return→base 4-day cliff — needs Juan's "how many return weeks
-before 4 days" call), M2 (immutable plan revisions — schedule as its own task), L1–L3 cleanup,
-and L2 strength-day over-inference. The per-finding detail below is kept for the record.
+**H1, H2, M3, M1 are FIXED** (implemented + regression-tested). H1/M3 via the shared
+`src/deterministic/schedule.ts`; H2 via `currentWeekIsComplete()` in `plan/context.ts`;
+M1 via `targetRunDays()` + soft 4-day spacing in `deterministic/trainingPhase.ts`.
+Tests: `src/plan/redteam.test.ts`, `src/deterministic/schedule.test.ts`,
+`src/deterministic/trainingPhase.test.ts`.
+
+**M1 decision made:** `RUN_DAY_STEP_UP_RUNS_28D = 12` — a returning athlete holds 3 run
+days through early base until ~4 weeks of ~3 runs/week (runs-in-28-days ≥ 12), then steps
+to 4. Sensible default in lieu of Juan's call; it's a one-constant tune in
+`trainingPhase.ts`. 4-day spacing is now a soft score (prefer [0,2,4,6], keep the key run
+out of any back-to-back pair) — never a hard filter, since only [0,2,4,6] is fully spaced
+and a lower-body conflict can force a tighter week.
+
+**Still open:** M2 (immutable plan revisions — its own task), L1 (duplicated HR-max clamp),
+L2 (strength-day over-inference — note: the live plan currently infers 5 strength days),
+L3 ("Workout"-type activity channel). The per-finding detail below is kept for the record.
 
 ## 2. Findings (ranked)
 

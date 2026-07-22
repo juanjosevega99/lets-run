@@ -96,26 +96,52 @@ export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
   };
 }
 
+/** Runs-in-28-days a returning athlete needs before the plan steps 3→4 run days. */
+export const RUN_DAY_STEP_UP_RUNS_28D = 12;
+
+/**
+ * How many run days the week should carry. Return/taper are always 3. Base and beyond
+ * are 4 — EXCEPT for a returning athlete who has only just cleared the return-to-run
+ * gate: hold 3 days through early base until running is well established, so the plan
+ * doesn't jump 3→4 impact days the instant the phase advances (red-team M1). Legacy
+ * callers that omit `runs28d` keep the old phase-only behavior.
+ */
+export function targetRunDays(phase: TrainingPhase, runs28d?: number): number {
+  if (phase === "return_to_run" || phase === "taper") return 3;
+  if (runs28d != null && runs28d < RUN_DAY_STEP_UP_RUNS_28D) return 3;
+  return 4;
+}
+
 /**
  * `allEasy` must match the template shape the plan will use (see `isAllEasyWeek`), so
  * the scheduler protects the SAME key day the template keys and the validator checks.
- * Defaults to true for legacy callers (all-easy is the conservative assumption).
+ * `runs28d` drives the 3-vs-4-day step-up; omit it for legacy phase-only behavior.
  */
 export function phaseRunDays(
   phase: TrainingPhase,
   lowerBodyStrengthDays: number[] = [],
   allEasy = true,
+  runs28d?: number,
 ): number[] {
-  const defaults = phase === "return_to_run" || phase === "taper" ? [1, 3, 6] : [0, 2, 4, 6];
+  const count = targetRunDays(phase, runs28d);
+  const defaults = count === 3 ? [1, 3, 6] : [0, 2, 4, 6];
   const lower = new Set(lowerBodyStrengthDays);
-  const requiresSpacing = defaults.length === 3;
-  const candidates = combinations([0, 1, 2, 3, 4, 5, 6], defaults.length).filter((days) => {
-    if (lowerBodyConflictsWithKey(keyRunDay(days, allEasy), lower)) return false;
-    return !requiresSpacing || days.every((day, i) => i === 0 || day - days[i - 1]! > 1);
-  });
-  if (candidates.length === 0) return defaults;
-  return candidates.reduce((best, days) =>
-    scheduleScore(days, defaults, lower) < scheduleScore(best, defaults, lower) ? days : best,
+  const all = combinations([0, 1, 2, 3, 4, 5, 6], count);
+
+  // HARD requirement — a lower-body/key conflict makes plan generation throw, so the
+  // returned week must never have one when a clear alternative exists.
+  const noConflict = all.filter((days) => !lowerBodyConflictsWithKey(keyRunDay(days, allEasy), lower));
+  if (noConflict.length === 0) return defaults; // truly infeasible config; surfaced downstream
+
+  // Three-day weeks can always be fully nonconsecutive, so make that a hard preference
+  // tier. Four-day spacing is only ever a SOFT preference (the only fully-spaced 4-day
+  // set is [0,2,4,6]; a lower-body conflict can force a tighter week — red-team M1), and
+  // is expressed through scheduleScore's adjacency penalties instead.
+  const nonconsecutive = noConflict.filter((days) => days.every((day, i) => i === 0 || day - days[i - 1]! > 1));
+  const pool = count <= 3 && nonconsecutive.length > 0 ? nonconsecutive : noConflict;
+
+  return pool.reduce((best, days) =>
+    scheduleScore(days, defaults, lower, allEasy) < scheduleScore(best, defaults, lower, allEasy) ? days : best,
   );
 }
 
@@ -132,8 +158,19 @@ function combinations(values: number[], count: number): number[][] {
   return out;
 }
 
-function scheduleScore(days: number[], defaults: number[], lower: Set<number>): number {
+function scheduleScore(days: number[], defaults: number[], lower: Set<number>, allEasy: boolean): number {
   const deviation = days.reduce((sum, day, i) => sum + Math.abs(day - defaults[i]!), 0);
   const easyAfterLegs = days.slice(0, -1).filter((day) => day > 0 && lower.has(day - 1)).length;
-  return deviation + easyAfterLegs * 2;
+  // Prefer no back-to-back run days (e.g. [0,2,4,6]), and especially keep the key run
+  // out of any back-to-back pair — both soft, so they never block a valid week.
+  const key = keyRunDay(days, allEasy);
+  let adjacentPairs = 0;
+  let keyAdjacent = 0;
+  for (let i = 1; i < days.length; i++) {
+    if (days[i]! - days[i - 1]! === 1) {
+      adjacentPairs++;
+      if (days[i] === key || days[i - 1] === key) keyAdjacent = 1;
+    }
+  }
+  return deviation + easyAfterLegs * 2 + adjacentPairs * 3 + keyAdjacent * 4;
 }

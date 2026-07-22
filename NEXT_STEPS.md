@@ -1,6 +1,22 @@
-# Coach v2 — first review and roadmap
+# Coach v2 — current state and next steps
 
-Updated 2026-07-19 for the Patagonia Running Festival 21K on 2027-04-24.
+Updated 2026-07-21 for the Patagonia Running Festival 21K on 2027-04-24.
+
+> This is the single source of truth for project continuity and priority. Deep
+> implementation details live in `docs/*.md`; they do not maintain a second roadmap.
+
+## Current state
+
+The end-to-end pipeline works: `Strava sync → fitness → current-shape estimate → weekly
+review → next plan`, through either the CLI or the dashboard's **Update training** action.
+Planning has a deterministic, no-API-cost path; LLM phrasing remains optional. The app is
+hosted on Vercel and reads Supabase through a server-side Postgres connection. Direct
+Supabase Data API access is deny-all: every application table has RLS enabled and public
+roles have no grants.
+
+The athlete is currently rebuilding running tolerance, so the correct phase is
+`return_to_run`. The race estimate remains paused until recent running provides enough
+evidence for a defensible number. Readiness outranks the calendar.
 
 ## First coaching verdict
 
@@ -66,13 +82,13 @@ green recovery signal.
 
 | doc | what | status |
 |---|---|---|
-| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1 (crash), H2 (wrong baseline), M3 (wraparound) FIXED + regression-tested 2026-07-19.** Open: M1 (return→base 4-day cliff, needs a decision), M2 (immutable plan revisions), L1–L3. | H1/H2/M3 done |
+| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1/H2/M3/M1 FIXED + regression-tested 2026-07-19.** Open: M2 (immutable plan revisions), L1–L3 (incl. strength-day over-inference — live plan infers 5 gym days). | H1/H2/M3/M1 done |
 | `docs/p0-checkin-implementation.md` | Post-session check-in that unlocks PROGRESS/DELOAD | spec ready |
 | `docs/p1-forecast-implementation.md` | Anchored performance state + freshness-aware intervals + scenario forecast | spec ready |
 | `docs/p1.5-training-anchors-implementation.md` | Mine streams for max-effort anchors (depends on P1) | spec ready |
 | `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach (P-SAFE-1 is the permanent regression net for red-team H1) | spec ready |
 
-Suggested order: **~~red-team H1+H2+M3~~ (done) → red-team M1 (decision needed) → P0 → F4 → P1 → P1.5.**
+Suggested order: **~~red-team H1+H2+M3+M1~~ (done) → P0 → F4 → P1 → P1.5.** (red-team L2 — strength-day over-inference — is a cheap cleanup worth folding into P0.)
 
 ## Highest-priority product gaps
 
@@ -80,8 +96,8 @@ Suggested order: **~~red-team H1+H2+M3~~ (done) → red-team M1 (decision needed
 
 > **Implementation spec ready:** `docs/p0-checkin-implementation.md` — self-contained
 > handoff (evidence, locked policy, file-by-file plan, tests, runbook). Two artifacts
-> already in the tree: `migrations/005_session_feedback.sql` (not yet applied) and
-> `src/plan/feedback.ts` (policy + form parser, needs its tests).
+> already in the tree: `migrations/005_session_feedback.sql` (applied 2026-07-21) and
+> `src/plan/feedback.ts` (policy + form parser, still needs its tests and UI wiring).
 
 - Add activity/session feedback and surface medical stop flags.
 - Match planned and actual sessions with stable IDs, discipline, duration, purpose, and
@@ -135,3 +151,15 @@ Suggested order: **~~red-team H1+H2+M3~~ (done) → red-team M1 (decision needed
 These are population findings, not medical diagnosis or proof that one threshold is
 optimal for this athlete. The weekly controller should be calibrated from Juan's own
 completion, RPE, pain, soreness, and performance response.
+
+## Engineering invariants
+
+- Postgres `DATE` values return as midnight-UTC `Date` objects. Use `dateOnly()` or
+  `isoDate()` from `src/lib/time.ts`; never stringify them directly.
+- Week bucketing uses `dashboardTz()` (default `America/Bogota`).
+- The deterministic template must pass its own validator. A validation failure is a bug,
+  not a plan-generation outcome.
+- Historical unreliable prediction rows remain stored for auditability; display code
+  must respect `context.reliable=false`.
+- `npm run build` is the typecheck. Keep it and `npm test` green before shipping.
+- Keep this file current by editing stale statements rather than appending session logs.

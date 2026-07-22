@@ -49,6 +49,7 @@ async function main() {
         ctx.trainingPhase,
         ctx.lowerBodyStrengthDays,
         isAllEasyWeek(ctx.trainingPhase, ctx.limiter.limiter),
+        ctx.runs28d,
       ),
       strengthDays: ctx.strengthDays,
     })) {
