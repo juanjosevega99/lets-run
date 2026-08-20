@@ -247,8 +247,13 @@ export interface PlanRow {
   generatedAt: Date;
 }
 
-/** The most recently generated plan (current or upcoming week). */
-export async function latestPlan(sql: Sql): Promise<PlanRow | null> {
+/**
+ * The plan for the week the athlete is currently in. `maxWeekStart` (the current coaching
+ * week, from reviewCutoffForReplan) caps the lookup so a prematurely-generated FUTURE week
+ * can't hijack the view — return the latest plan whose week has already started. Omit it to
+ * fall back to the newest plan by date (used by tests / non-time-aware callers).
+ */
+export async function latestPlan(sql: Sql, maxWeekStart?: string): Promise<PlanRow | null> {
   const rows = await sql<
     {
       week_start: unknown;
@@ -260,7 +265,9 @@ export async function latestPlan(sql: Sql): Promise<PlanRow | null> {
     }[]
   >`
     select week_start, target_limiter, key_session, support_sessions, explanation, generated_at
-    from plan_week order by week_start desc limit 1
+    from plan_week
+    where ${maxWeekStart == null ? sql`true` : sql`week_start <= ${maxWeekStart}`}
+    order by week_start desc limit 1
   `;
   const r = rows[0];
   if (!r) return null;

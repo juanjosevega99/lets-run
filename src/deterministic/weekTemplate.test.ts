@@ -168,6 +168,44 @@ describe("buildWeekTemplate — behavior", () => {
     expect(plan.key_session.planned_km).toBeLessThanOrEqual(3.3);
   });
 
+  it("caps the return long-run DURATION too, so an overshoot week can't jump it +40%", () => {
+    // Reproduces the real case: after an overachieved return week (ran 14.4km vs the 10km
+    // default) the long run must not balloon 30→43 min. Its km is held to 110% of the
+    // longest recent run; its minutes now inherit the same guardrail instead of scaling
+    // off raw weekly volume.
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        limiter: "aerobic_base",
+        runDays: [1, 3, 6],
+        previousWeekKm: 14.4,
+        longestRunKm30d: 4.1,
+        previousDecision: "PROCEED",
+      }),
+    );
+    const key = plan.key_session;
+    expect(key.title).toBe("Longest easy run/walk");
+    expect(key.planned_minutes!).toBeLessThanOrEqual(35); // ~34, not 43
+    // Minutes and km must imply the same easy run/walk pace — the copy can't self-contradict.
+    const paceMinPerKm = key.planned_minutes! / key.planned_km;
+    expect(paceMinPerKm).toBeGreaterThan(6.5);
+    expect(paceMinPerKm).toBeLessThan(8.5);
+  });
+
+  it("leaves the standard 30-min return long run unchanged at the default baseline", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        limiter: "aerobic_base",
+        runDays: [1, 3, 6],
+        previousWeekKm: 10,
+        longestRunKm30d: 4,
+        previousDecision: "PROCEED",
+      }),
+    );
+    expect(plan.key_session.planned_minutes!).toBe(30);
+  });
+
   it("includes real paces in session descriptions when available", () => {
     const plan = buildWeekTemplate(baseInput({ limiter: "aerobic_base", easyPaceSecPerKm: 360 }));
     expect(plan.key_session.description).toContain("6:00/km");

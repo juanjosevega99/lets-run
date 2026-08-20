@@ -19,6 +19,7 @@ import {
   thisWeekActivities,
   weeklyRunVolume,
 } from "./queries.js";
+import { reviewCutoffForReplan } from "../plan/context.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
@@ -93,6 +94,7 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
 
 async function route(path: string): Promise<string | null> {
   const now = new Date();
+  const coachingWeek = reviewCutoffForReplan(now);
   switch (path) {
     case "/": {
       const [predictions, fitness, snapshot, latest, races, plan] = await Promise.all([
@@ -101,7 +103,7 @@ async function route(path: string): Promise<string | null> {
         recentSnapshot(sql, 28),
         latestActivityDate(sql),
         allRaces(sql),
-        latestPlan(sql),
+        latestPlan(sql, coachingWeek),
       ]);
       return layout(
         "lets-run · now",
@@ -120,7 +122,7 @@ async function route(path: string): Promise<string | null> {
       );
     }
     case "/week": {
-      const plan = await latestPlan(sql);
+      const plan = await latestPlan(sql, coachingWeek);
       // Show actuals from the same dates as the displayed prescription. Previously
       // a future plan could sit beside the current calendar week's activities.
       const activities = plan ? await activitiesForWeek(sql, plan.weekStart) : await thisWeekActivities(sql);

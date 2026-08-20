@@ -1,5 +1,5 @@
 import type { Sql } from "../db.js";
-import { buildPlanContext, nextMonday, reviewCutoffForReplan } from "./context.js";
+import { buildPlanContext, reviewCutoffForReplan } from "./context.js";
 import { buildWeekTemplate, plannedRunVolumeCeiling } from "../deterministic/weekTemplate.js";
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
 import { isAllEasyWeek } from "../deterministic/schedule.js";
@@ -75,7 +75,13 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     );
   }
 
-  const weekStart = nextMonday();
+  // Plan the week the athlete is actually in, not always the next one. Midweek that is
+  // the current week (so today's runs log against a live plan); only on Sunday evening,
+  // when the week is essentially done, does this roll to the coming Monday. This reuses
+  // the exact boundary the review above uses, so plan target and review week stay in sync
+  // (previously this hardcoded nextMonday(), so a Tuesday refresh showed a plan dated 6
+  // days out as "your week").
+  const weekStart = reviewCutoffForReplan();
   await sql`
     insert into plan_week (week_start, target_limiter, key_session, support_sessions, explanation, model_version)
     values (${weekStart}, ${plan.target_limiter}, ${sql.json(plan.key_session as never)},

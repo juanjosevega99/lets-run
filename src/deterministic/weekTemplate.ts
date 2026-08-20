@@ -149,7 +149,6 @@ function returnToRunWeek(
   const easyDays = runDays.filter((day) => day !== keyDay);
   const ratios = runDays.length === 3 ? [0.27, 0.33, 0.4] : runDays.map(() => 1 / runDays.length);
   const minutesBase = [20, 25, 30];
-  const doseScale = totalKm / DEFAULT_RETURN_KM;
   const kmByDay = new Map<number, number>();
   const minutesByDay = new Map<number, number>();
 
@@ -157,9 +156,17 @@ function returnToRunWeek(
     const day = runDays[i]!;
     const ratio = ratios[i] ?? 1 / runDays.length;
     const sessionCap = day === keyDay && x.longestRunKm30d > 0 ? x.longestRunKm30d * 1.1 : 4;
-    kmByDay.set(day, floor1(Math.min(totalKm * ratio, sessionCap)));
+    const km = floor1(Math.min(totalKm * ratio, sessionCap));
+    kmByDay.set(day, km);
     const baseMinutes = minutesBase[i] ?? Math.round(75 / runDays.length);
-    minutesByDay.set(day, Math.max(15, Math.round(baseMinutes * doseScale)));
+    // Duration tracks the (already session-capped) distance, not the raw weekly dose.
+    // The key run's km is capped at 110% of the longest recent run; scaling minutes off
+    // total volume instead let the LONGEST run's DURATION jump ~40% in a single week
+    // (e.g. 30→43 min) even though its km was held to +10% — and made the copy
+    // self-contradict ("43 min / 4.5km" implies a pace no easy run would hold). Anchoring
+    // minutes to km keeps run/walk pace constant and inherits the same growth guardrail.
+    const baseKm = DEFAULT_RETURN_KM * ratio;
+    minutesByDay.set(day, Math.max(15, Math.round(baseMinutes * (km / baseKm))));
   }
 
   const effort = easyEffort(x);
