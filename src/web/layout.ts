@@ -164,6 +164,17 @@ export function layout(title: string, activePath: string, body: string): string 
   .insight-card .k { color: var(--muted); font-size: .8rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
   .insight-card .v { margin: .65rem 0 .25rem; color: var(--ink-strong); font-size: 1.85rem; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
   .insight-card p { margin: .65rem 0 0; color: var(--muted); font-size: .87rem; }
+  .readiness-card { border-left: 4px solid var(--line-strong); }
+  .readiness-card.tone-calm { border-left-color: #2f8f6b; }
+  .readiness-card.tone-warn { border-left-color: #d98a3d; }
+  .readiness-card.risk-building_base { border-left-color: var(--line-strong); }
+  .readiness-card.risk-low { border-left-color: #2f8f6b; }
+  .readiness-card.risk-optimal { border-left-color: #1f7d57; }
+  .readiness-card.risk-low .v, .readiness-card.risk-optimal .v { color: #1f6d4c; }
+  .readiness-card.risk-elevated { border-left-color: #d98a3d; }
+  .readiness-card.risk-elevated .v { color: #b56a1e; }
+  .readiness-card.risk-high { border-left-color: #cc4b37; background: var(--orange-soft); }
+  .readiness-card.risk-high .v { color: #b23a22; }
   .empty { margin: 0; padding: 1.1rem 1.2rem; border: 1px dashed var(--line-strong); border-radius: 14px; color: var(--muted-strong); background: var(--surface-soft); }
   details { border-radius: 14px; }
   details > summary { min-height: 44px; display: flex; align-items: center; gap: .5rem; color: var(--muted-strong); cursor: pointer; font-size: .88rem; font-weight: 750; list-style: none; }
@@ -255,12 +266,18 @@ export function layout(title: string, activePath: string, body: string): string 
     .goal-copy { grid-column: 1 / -1; }
     .compact-metric { padding-left: 0; border-left: 0; }
   }
+  @media (max-width: 560px) {
+    /* Phones (incl. iPhone 16 Pro Max at 440pt) get a single-column agenda. A 2-up grid
+       stretches a short day (e.g. a strength-only Monday) to match a taller neighbour,
+       leaving a big half-empty card; full-width, content-height rows read as a clean
+       schedule instead. */
+    .schedule-grid { grid-template-columns: 1fr; }
+    .day-card { min-height: 0; }
+  }
   @media (max-width: 430px) {
     .brand-copy { display: none; }
     .hero-copy { min-height: 310px; }
     .countdown { margin-top: 1.4rem; }
-    .schedule-grid { grid-template-columns: 1fr; }
-    .day-card { min-height: 0; }
     .technical-grid { grid-template-columns: 1fr 1fr; }
     .logged-row { grid-template-columns: 3rem minmax(0, 1fr); gap: .65rem; }
     .logged-stats { grid-column: 2; text-align: left; }

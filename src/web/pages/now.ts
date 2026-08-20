@@ -1,6 +1,7 @@
 import { esc } from "../html.js";
 import { dateInTimeZone, formatDuration, formatPace } from "../../lib/time.js";
 import { RACE } from "../../lib/race.js";
+import { estimateInjuryRisk } from "../../deterministic/injuryRisk.js";
 import type { FitnessRow, PlanRow, PredictionRow, RaceRow, RecentSnapshot } from "../queries.js";
 
 export interface NowData {
@@ -69,6 +70,8 @@ export function renderNow(d: NowData): string {
       ${renderWeekGlance(plan)}
     </div>
   </section>
+
+  ${renderReadiness(d.fitness)}
 
   <section class="section-block" aria-labelledby="context-heading">
     <div class="section-heading">
@@ -167,6 +170,64 @@ function renderWeekGlance(summary: PlanSummary): string {
       <div class="glance-item"><span>Protected recovery</span><strong>${summary.restDay ?? "As needed"}</strong></div>
     </div>
   </aside>`;
+}
+
+/**
+ * The "legible metrics" header (borrowed framing): the Banister load model in plain
+ * language. Fatigue and Recovery read the WHOLE-program curves (running + cross-training
+ * + strength); injury risk reads RUNNING-specific load, because running impact is what
+ * causes running injury. Falls back to nothing when the load pipeline hasn't run.
+ */
+function renderReadiness(fitness: FitnessRow | null): string {
+  if (!fitness) return "";
+  const fatigue = fatigueTile(fitness);
+  const recovery = recoveryTile(fitness);
+  const risk = estimateInjuryRisk({ acuteLoad: fitness.atl, chronicLoad: fitness.ctl });
+  const tiles = [
+    { k: "Fatigue", v: fatigue.headline, note: fatigue.note, tone: fatigue.tone },
+    { k: "Recovery", v: recovery.headline, note: recovery.note, tone: recovery.tone },
+    { k: "Injury risk", v: risk.headline, note: risk.reason, tone: `risk-${risk.level}` },
+  ];
+  return `
+  <section class="section-block" aria-labelledby="readiness-heading">
+    <div class="section-heading">
+      <div><p class="eyebrow">Readiness</p><h2 id="readiness-heading">How your body is handling training</h2></div>
+      <p class="section-copy">Your training-load model in plain language. Fatigue and recovery read the whole program; injury risk reads running impact specifically.</p>
+    </div>
+    <div class="insight-grid">
+      ${tiles
+        .map(
+          (t) => `<article class="insight-card panel readiness-card ${t.tone}">
+        <div class="k">${t.k}</div>
+        <div class="v">${esc(t.v)}</div>
+        <p>${esc(t.note)}</p>
+      </article>`,
+        )
+        .join("")}
+    </div>
+  </section>`;
+}
+
+/** How much recent load you're carrying vs your baseline (whole-program acute ÷ chronic). */
+function fatigueTile(f: FitnessRow): { headline: string; note: string; tone: string } {
+  const atl = f.totalAtl ?? f.atl;
+  const ctl = f.totalCtl ?? f.ctl;
+  const ratio = ctl > 0 ? atl / ctl : 0;
+  if (ratio >= 1.15)
+    return { headline: "Rising", tone: "tone-warn", note: "Recent training load is above your baseline — normal while building, worth watching if it holds." };
+  if (ratio <= 0.85)
+    return { headline: "Low", tone: "tone-calm", note: "You're carrying little recent load relative to your baseline." };
+  return { headline: "Steady", tone: "", note: "Recent load matches your baseline — a sustainable place to build from." };
+}
+
+/** How ready you are for the next hard effort (whole-program form / TSB). */
+function recoveryTile(f: FitnessRow): { headline: string; note: string; tone: string } {
+  const tsb = f.totalTsb ?? f.tsb;
+  if (tsb > 5)
+    return { headline: "Fresh", tone: "tone-calm", note: "You're rested relative to your recent load — a good window for a harder session." };
+  if (tsb < -10)
+    return { headline: "Under load", tone: "tone-warn", note: "You're carrying meaningful fatigue — keep easy days genuinely easy." };
+  return { headline: "Ready", tone: "", note: "Fatigue and fitness are balanced — cleared for the planned work." };
 }
 
 function renderLoadDetails(fitness: FitnessRow | null): string {
