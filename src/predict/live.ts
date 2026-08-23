@@ -103,15 +103,20 @@ export async function generateLivePrediction(
 /** Reads the current running CTL and recent-running signal, then applies the gate. */
 async function currentShapeReliability(sql: Sql, tz: string): Promise<{ reliable: boolean; reason: string }> {
   const [fit] = await sql<{ ctl: number | null }[]>`select ctl from fitness_state order by day desc limit 1`;
-  const [recent] = await sql<{ runs_28d: number; days_since_last_run: number | null }[]>`
+  const [recent] = await sql<
+    { runs_28d: number; days_since_last_run: number | null; longest_90d_m: number | null }[]
+  >`
     select count(*) filter (where start_date >= now() - interval '28 days')::int as runs_28d,
-           ((now() at time zone ${tz})::date - max((start_date at time zone ${tz})::date))::int as days_since_last_run
+           ((now() at time zone ${tz})::date - max((start_date at time zone ${tz})::date))::int as days_since_last_run,
+           max(distance_m) filter (where start_date >= now() - interval '90 days') as longest_90d_m
     from activities where sport_type ilike '%run%'
   `;
   return estimateReliability({
     runningCtl: fit?.ctl ?? null,
     runs28d: recent?.runs_28d ?? 0,
     daysSinceLastRun: recent?.days_since_last_run ?? null,
+    longestRecentRunM: recent?.longest_90d_m ?? null,
+    raceDistanceM: RACE.distanceM,
   });
 }
 
