@@ -18,11 +18,13 @@ import {
   activitiesForWeek,
   thisWeekActivities,
   weeklyRunVolume,
+  zoneReport,
 } from "./queries.js";
 import { reviewCutoffForReplan } from "../plan/context.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
+import { renderZones } from "./pages/zones.js";
 
 /**
  * The athlete dashboard: overview, adaptive weekly plan, and progress.
@@ -131,6 +133,10 @@ async function route(path: string): Promise<string | null> {
         "/week",
         renderWeek({ activities, plan, tz: dashboardTz() }),
       );
+    }
+    case "/zones": {
+      const report = await zoneReport(sql);
+      return layout("lets-run · zones", "/zones", renderZones({ report, tz: dashboardTz() }));
     }
     case "/trajectory": {
       const [weeks, peakAvgKm, predictions] = await Promise.all([

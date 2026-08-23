@@ -1,7 +1,7 @@
 import type { Sql } from "../db.js";
 import type { PlanContext } from "./generate.js";
 import { trainingPaces, vdotFromRace } from "../deterministic/vdot.js";
-import { hrZones, median } from "../deterministic/zones.js";
+import { hrZones, median, resolveHrMax } from "../deterministic/zones.js";
 import { selectTrainingFocus, selectTrainingPhase } from "../deterministic/trainingPhase.js";
 import { RACE, daysToRace } from "../lib/race.js";
 import { dateOnly } from "../lib/time.js";
@@ -104,7 +104,7 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
   const observedHrMax = hrRow[0]?.hr_max ?? null;
   // Keep prescription consistent with the load model: reject implausible sensor
   // spikes rather than turning one bad sample into an unsafe easy-HR ceiling.
-  const hrMax = observedHrMax == null ? null : observedHrMax >= 170 && observedHrMax <= 210 ? observedHrMax : 193;
+  const hrMax = observedHrMax == null ? null : resolveHrMax(observedHrMax);
   const zones = hrMax ? hrZones({ hrMax, hrRest: Number(process.env.ATHLETE_HR_REST ?? 55) }) : null;
 
   // Observed easy pace: what pace does he ACTUALLY run at easy heart rate, recently?

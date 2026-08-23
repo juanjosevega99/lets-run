@@ -1,5 +1,7 @@
 import type { Sql } from "../db.js";
 import { dateOnly } from "../lib/time.js";
+import { hrBands, median, resolveHrMax, type HrBand } from "../deterministic/zones.js";
+import { accumulateZoneTime, emptyZoneTotals, type ZoneTotals } from "../deterministic/zoneTime.js";
 
 /**
  * Display-level SQL aggregations for the dashboard. Deliberately dumb: sums, counts,
@@ -327,4 +329,95 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
     intervalSampleSize: r.interval_error_n,
     reliable: r.reliable,
   }));
+}
+
+export interface ZoneRunRow {
+  activityId: string;
+  name: string;
+  startDate: Date;
+  distanceM: number;
+  movingTimeS: number;
+  avgHr: number | null;
+  totals: ZoneTotals;
+}
+
+export interface ZoneReport {
+  hrMax: number;
+  bands: HrBand[];
+  runs: ZoneRunRow[];
+  combined: ZoneTotals;
+  /** Median pace (sec/km) of whole runs whose AVERAGE HR sat in the easy band. */
+  medianEasyRunPaceSecPerKm: number | null;
+}
+
+/**
+ * Per-run zone distribution for the dashboard's zone view. Fetches raw streams and
+ * delegates every judgement (band edges, binning, pace) to src/deterministic — this
+ * layer stays a dumb fetch, per this file's contract.
+ */
+export async function zoneReport(sql: Sql, limit = 10): Promise<ZoneReport | null> {
+  const [hrRow] = await sql<{ hr_max: number | null }[]>`
+    select max(max_hr) as hr_max from activities where max_hr is not null`;
+  if (hrRow?.hr_max == null) return null;
+
+  const hrMax = resolveHrMax(hrRow.hr_max);
+  const bands = hrBands({ hrMax, hrRest: Number(process.env.ATHLETE_HR_REST ?? 55) });
+
+  const rows = await sql<
+    {
+      id: string;
+      name: string;
+      start_date: Date;
+      distance_m: number;
+      moving_time_s: number;
+      avg_hr: number | null;
+      time_s: number[] | null;
+      distance_stream: number[] | null;
+      heartrate: number[] | null;
+    }[]
+  >`
+    select a.id, a.name, a.start_date, a.distance_m, a.moving_time_s, a.avg_hr,
+           s.time_s, s.distance_m as distance_stream, s.heartrate
+    from activities a
+    join activity_streams s on s.activity_id = a.id
+    where a.sport_type ilike '%run%' and s.heartrate is not null
+    order by a.start_date desc
+    limit ${limit}
+  `;
+
+  const combined = emptyZoneTotals();
+  const runs: ZoneRunRow[] = [];
+  for (const r of rows) {
+    if (!r.time_s || !r.distance_stream || !r.heartrate) continue;
+    const stream = { timeS: r.time_s, distanceM: r.distance_stream, heartrate: r.heartrate };
+    const totals = accumulateZoneTime(stream, bands);
+    accumulateZoneTime(stream, bands, combined);
+    runs.push({
+      activityId: r.id,
+      name: r.name,
+      startDate: r.start_date,
+      distanceM: r.distance_m,
+      movingTimeS: r.moving_time_s,
+      avgHr: r.avg_hr,
+      totals,
+    });
+  }
+
+  const easyBand = bands.find((b) => b.key === "easy")!;
+  const easyRuns = await sql<{ sec_per_km: number }[]>`
+    select (moving_time_s / (distance_m / 1000.0)) as sec_per_km
+    from activities
+    where sport_type ilike '%run%' and avg_hr is not null
+      and avg_hr >= ${easyBand.min} and avg_hr < ${easyBand.max ?? 999}
+      and distance_m > 2000 and moving_time_s > 0
+      and start_date >= now() - interval '180 days'
+  `;
+
+  return {
+    hrMax,
+    bands,
+    runs,
+    combined,
+    medianEasyRunPaceSecPerKm: median(easyRuns.map((r) => Number(r.sec_per_km))),
+  };
 }

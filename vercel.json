@@ -9,6 +9,7 @@
   "rewrites": [
     { "source": "/", "destination": "/api?path=/" },
     { "source": "/week", "destination": "/api?path=/week" },
+    { "source": "/zones", "destination": "/api?path=/zones" },
     { "source": "/trajectory", "destination": "/api?path=/trajectory" },
     { "source": "/actions/refresh", "destination": "/api?path=/actions/refresh" }
   ]

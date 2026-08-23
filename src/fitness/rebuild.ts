@@ -2,6 +2,7 @@ import type { Sql } from "../db.js";
 import { activityStress, isAerobic, isRunning, type AthleteHrProfile } from "../deterministic/stress.js";
 import { banisterSeries, fillDays } from "../deterministic/banister.js";
 import { vdotFromRace } from "../deterministic/vdot.js";
+import { resolveHrMax } from "../deterministic/zones.js";
 import { dateInTimeZone } from "../lib/time.js";
 import { dashboardTz } from "../web/queries.js";
 import type { Log } from "../strava/sync.js";
@@ -46,7 +47,7 @@ export async function rebuildFitness(sql: Sql, log: Log): Promise<void> {
 
     const observedMax = Math.max(0, ...activities.map((a) => a.max_hr ?? 0));
     const hr: AthleteHrProfile = {
-      hrMax: observedMax >= 170 && observedMax <= 210 ? observedMax : 193,
+      hrMax: resolveHrMax(observedMax),
       hrRest: Number(process.env.ATHLETE_HR_REST ?? 55),
     };
 
