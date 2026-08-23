@@ -82,13 +82,25 @@ green recovery signal.
 
 | doc | what | status |
 |---|---|---|
-| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1/H2/M3/M1 FIXED + regression-tested 2026-07-19.** Open: M2 (immutable plan revisions), L1–L3 (incl. strength-day over-inference — live plan infers 5 gym days). | H1/H2/M3/M1 done |
+| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1/H2/M3/M1 FIXED 2026-07-19; L1 FIXED 2026-08-23** (one `resolveHrMax()` in `zones.ts` — it resolves max HR to 201, so the easy ceiling is 159). Open: M2 (immutable plan revisions), L2 (strength-day over-inference — live plan still infers 5 gym days), L3. | H1/H2/M3/M1/L1 done |
 | `docs/p0-checkin-implementation.md` | Post-session check-in that unlocks PROGRESS/DELOAD | spec ready |
 | `docs/p1-forecast-implementation.md` | Anchored performance state + freshness-aware intervals + scenario forecast | spec ready |
 | `docs/p1.5-training-anchors-implementation.md` | Mine streams for max-effort anchors (depends on P1) | spec ready |
 | `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach (P-SAFE-1 is the permanent regression net for red-team H1) | spec ready |
 
-Suggested order: **~~red-team H1+H2+M3+M1~~ (done) → P0 → F4 → P1 → P1.5.** (red-team L2 — strength-day over-inference — is a cheap cleanup worth folding into P0.)
+Suggested order: **~~red-team H1+H2+M3+M1+L1~~ (done) → P0 → F4 → P1 → P1.5.** (red-team L2 — strength-day over-inference — is a cheap cleanup worth folding into P0.)
+
+### Shipped since, not yet specced anywhere
+
+- **Zones view** (`/zones`): HR bands from the athlete's own observed max, observed pace
+  per band, easy-share vs the 80% polarized target and its per-run trend.
+  `deterministic/zoneTime.ts` bins per-sample HR streams; `deterministic/zones.ts` owns
+  the band model and `resolveHrMax()`.
+- **Readiness tiles** on the overview: Fatigue / Recovery / Injury risk, the last from
+  `deterministic/injuryRisk.ts` (ACWR, withheld while the chronic base is near zero).
+- **Plan targets the current week**, not always next Monday (`freePlan.ts` now uses
+  `reviewCutoffForReplan()`); return-to-run session *duration* inherits the same growth
+  cap its distance already had.
 
 ## Highest-priority product gaps
 
@@ -112,13 +124,16 @@ Suggested order: **~~red-team H1+H2+M3+M1~~ (done) → P0 → F4 → P1 → P1.5
 > freshness-aware intervals, scenario forecast, tests, runbook). Needs Juan's
 > max-effort/confidence confirmations for the race table (defaults proposed in §3.1).
 >
-> **Interim honesty fix shipped 2026-07-19:** the symptom of defects D1/D2 (an
-> over-optimistic 1:48:37 current-shape estimate off zero running) is now GATED at
-> display. `src/predict/reliability.ts` withholds the number when running CTL ≤ 5
-> (the bridge-saturation floor) or there's no recent running; `live.ts` marks the row
-> `context.reliable=false` and drops its band; Now/Trajectory show "Estimate paused"
-> instead of a false-precise time. The full accuracy rebuild (right anchor + calibrated
-> bridge) is still this P1 spec.
+> **Interim honesty fix shipped 2026-07-19, hardened 2026-08-23:** the symptom of defects
+> D1/D2 (an over-optimistic ~1:48 current-shape estimate off almost no running) is GATED
+> at display in `src/predict/reliability.ts`; `live.ts` marks the row
+> `context.reliable=false` and drops its band; Now/Trajectory show "Estimate paused".
+> Three guards now, after the first one leaked (see D4 in the spec): running CTL must
+> clear the bridge's saturation floor **by a margin** (CTL 5.10 vs a floor of 5 was
+> enough to unpause 1:48:29 on 2026-08-23), there must be recent running, and the target
+> distance must be **within 3x the longest recent run** — a 21.1K estimate off a 4.97K
+> longest run is outside the model's valid domain. The full accuracy rebuild (right
+> anchor + calibrated bridge + an explicit validity domain) is still this P1 spec.
 
 - Keep `current_shape_estimate` separate from a future `race_day_forecast`.
 - Add planned-training / reduced-adherence / maintain-current-load scenarios.

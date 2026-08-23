@@ -40,8 +40,16 @@ to 4. Sensible default in lieu of Juan's call; it's a one-constant tune in
 out of any back-to-back pair) — never a hard filter, since only [0,2,4,6] is fully spaced
 and a lower-body conflict can force a tighter week.
 
-**Still open:** M2 (immutable plan revisions — its own task), L1 (duplicated HR-max clamp),
-L2 (strength-day over-inference — note: the live plan currently infers 5 strength days),
+**L1 is FIXED (2026-08-23):** the duplicated HR-max clamp is now one `resolveHrMax()` in
+`deterministic/zones.ts`, called by both `fitness/rebuild.ts` and `plan/context.ts`.
+This mattered more than "LOW" suggested — the clamp resolves Juan's max HR to **201**
+(observed repeatedly, 195–201 across years; an age formula would say 189), which sets the
+easy ceiling at **159**, not 148. Any drift between the two copies would have meant the
+zones that SCORE training disagreeing with the zones that PRESCRIBE it.
+
+**Still open:** M2 (immutable plan revisions — its own task; note the live refresh
+re-generates the current week, so a Sunday post-run refresh can restate the session it is
+auditing), L2 (strength-day over-inference — the live plan still infers 5 strength days),
 L3 ("Workout"-type activity channel). The per-finding detail below is kept for the record.
 
 ## 2. Findings (ranked)

@@ -40,6 +40,22 @@ question: *"What will I plausibly run on 2027-04-24, under what training, and am
 on track?"* The gap-to-target on the dashboard compares a detrained *today* against
 a race-day goal — honest but almost useless nine months out.
 
+**D4 — The model has no notion of its own valid distance domain.** *(Added 2026-08-23,
+found live rather than in the backtest.)* On 2026-08-23 running CTL crossed the
+reliability gate's floor (5.10 vs a floor of 5) and the dashboard immediately published
+**1:48:29 for the 21.1K — 5:08/km — off a 4.97 km longest run**, a 4.2x distance
+extrapolation. Measured against the same athlete's own current zones that day, the
+predicted *race* pace was faster than his measured *threshold* pace (5:25/km), i.e. the
+model claimed he could hold for 1h48m uphill a pace he could not hold for one minute on
+the flat. Two separate causes, both now gated in `src/predict/reliability.ts`:
+(a) the CTL check was a bare `<=` against the bridge's own clamp, so a value 0.1 above a
+saturated bridge counted as "anchored" — now requires `RELIABILITY_CTL_MARGIN`;
+(b) nothing bounded distance extrapolation — now `RELIABILITY_MAX_EXTRAPOLATION = 3`.
+**Implication for this spec:** the performance-state model in §3 must carry an explicit
+validity domain (longest recent run vs target distance) as a first-class output, not
+rely on the display gate to catch it. Riegel-type extrapolation is the reason: its
+exponent is calibrated on distances the athlete has actually raced.
+
 ## 2. Conceptual model (read this before the file plan)
 
 Split the athlete into **traits** and **condition**:
