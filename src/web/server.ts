@@ -17,11 +17,13 @@ import {
   recentSnapshot,
   activitiesForWeek,
   thisWeekActivities,
+  longestRunKm,
   weeklyRunVolume,
   zoneReport,
   checkinActivities,
 } from "./queries.js";
-import { buildPlanContext, reviewCutoffForReplan } from "../plan/context.js";
+import { currentWeekIsComplete, reviewCutoffForReplan } from "../plan/context.js";
+import { raceTrajectory } from "../deterministic/trajectory.js";
 import { parseFeedbackForm } from "../plan/feedback.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
@@ -211,14 +213,25 @@ async function route(path: string): Promise<string | null> {
       return layout("lets-run · zones", "/zones", renderZones({ report, tz: dashboardTz() }));
     }
     case "/trajectory": {
-      const [weeks, peakAvgKm, predictions, planCtx] = await Promise.all([
+      const [weeks, peakAvgKm, predictions, longest30d] = await Promise.all([
         weeklyRunVolume(sql, 52),
         peakEraWeeklyAvgKm(sql),
         livePredictions(sql),
-        // The forward model needs the same context the planner uses. A failure here
-        // must not take the whole page down — the history above it still stands.
-        buildPlanContext(sql).catch(() => null),
+        longestRunKm(sql, 30),
       ]);
+      // The trajectory needs four numbers, not the whole plan context: building that
+      // here cost ~2s of sequential round-trips on every page view. The weekly volume
+      // is already loaded above, so the 4-week mean is free — matching buildPlanContext,
+      // the in-progress week is excluded unless it is effectively finished.
+      const completed = currentWeekIsComplete(now) ? weeks : weeks.slice(0, -1);
+      const recent4 = completed.slice(-4);
+      const trajectory = raceTrajectory({
+        raceKm: RACE.distanceM / 1000,
+        weeksToRace: daysToRace(now) / 7,
+        currentWeeklyKm:
+          recent4.length > 0 ? recent4.reduce((sum, w) => sum + w.km, 0) / recent4.length : 0,
+        currentLongestRunKm: longest30d ?? 0,
+      });
       return layout(
         "lets-run · trajectory",
         "/trajectory",
@@ -226,7 +239,7 @@ async function route(path: string): Promise<string | null> {
           weeks,
           peakAvgKm,
           predictions,
-          trajectory: planCtx?.trajectory ?? null,
+          trajectory,
           tz: dashboardTz(),
         }),
       );

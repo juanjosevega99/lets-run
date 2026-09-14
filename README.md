@@ -69,7 +69,9 @@ plan-week, and compliance bucketing.
 The app can run as a Vercel Node function, with Supabase Postgres holding all durable
 training data. After the one-time setup below, the laptop is not needed to view the
 dashboard: open the project's `*.vercel.app` URL on your phone and save it to the home
-screen. The Basic Auth prompt is the dashboard password.
+screen. The app itself has no auth gate (removed in `077c3af`), so access control is
+whatever Vercel Deployment Protection is set to for the project — check it before
+deploying: the dashboard exposes training data and two POST write endpoints.
 
 1. Import the repository into Vercel and link it to the project (`VERCEL_ORG_ID` and
    `VERCEL_PROJECT_ID` are available from the Vercel CLI/project settings).

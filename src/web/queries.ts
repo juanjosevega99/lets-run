@@ -215,6 +215,16 @@ export async function checkinActivities(sql: Sql, days: number): Promise<Checkin
   }));
 }
 
+/** Longest single run in the last N days, in km. Null when there is none. */
+export async function longestRunKm(sql: Sql, days: number): Promise<number | null> {
+  const rows = await sql<{ longest: number | null }[]>`
+    select max(distance_m) as longest from activities
+    where sport_type = any(${RUN_TYPES}) and start_date >= now() - make_interval(days => ${days})
+  `;
+  const longest = rows[0]?.longest;
+  return longest == null ? null : longest / 1000;
+}
+
 export async function latestActivityDate(sql: Sql): Promise<Date | null> {
   const rows = await sql<{ latest: Date | null }[]>`select max(start_date) as latest from activities`;
   return rows[0]?.latest ?? null;
