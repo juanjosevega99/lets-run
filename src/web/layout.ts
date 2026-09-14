@@ -273,6 +273,15 @@ export function layout(title: string, activePath: string, body: string): string 
   .logged-list { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); }
   .logged-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: .9rem 1rem; border-bottom: 1px solid var(--line); }
   .logged-row:last-child { border-bottom: 0; }
+  .checkin-list { display: grid; gap: .75rem; }
+  .checkin-row { border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; background: var(--surface); }
+  .checkin-row--done { opacity: .82; }
+  .checkin-head { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; gap: 1rem; align-items: center; }
+  .checkin-form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; margin-top: .8rem; }
+  .checkin-form label { display: grid; gap: .3rem; font-size: .74rem; font-weight: 800; text-transform: uppercase; color: var(--muted); }
+  .checkin-form select { font: inherit; padding: .45rem .55rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; text-transform: none; font-weight: 500; }
+  .checkin-form button { font: inherit; font-weight: 700; padding: .5rem .9rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; cursor: pointer; }
+  .checkin-row details summary { cursor: pointer; font-size: .78rem; color: var(--muted); margin-top: .6rem; }
   .logged-day { color: var(--muted); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
   .logged-name strong, .logged-name span { display: block; }
   .logged-name span { color: var(--muted); font-size: .78rem; }
@@ -332,6 +341,9 @@ export function layout(title: string, activePath: string, body: string): string 
        schedule instead. */
     .schedule-grid { grid-template-columns: 1fr; }
     .day-card { min-height: 0; }
+    .checkin-head { grid-template-columns: minmax(0, 1fr) auto; }
+    .checkin-head .logged-day { grid-column: 1 / -1; }
+    .checkin-form label { flex: 1 1 8rem; }
   }
   @media (max-width: 430px) {
     .brand-copy { display: none; }

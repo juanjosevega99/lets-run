@@ -20,6 +20,7 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
   log(`phase: ${ctx.trainingPhase}`);
   log(`limiter: ${ctx.limiter.limiter} — ${ctx.limiter.reason}`);
   const maxPlannedRunKm = plannedRunVolumeCeiling(ctx);
+  log(`trajectory: ${ctx.trajectory.status} — ${ctx.trajectory.headline}`);
   log(
     `controller: running ceiling ${maxPlannedRunKm.toFixed(1)}km · running balance ${ctx.tsb.toFixed(1)} · aerobic balance ${ctx.aerobicTsb?.toFixed(1) ?? "unknown"} · whole-program balance ${ctx.totalTsb?.toFixed(1) ?? "unknown"} (context only)`,
   );
@@ -29,6 +30,8 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     limiterReason: ctx.limiter.reason,
     trainingPhase: ctx.trainingPhase,
     previousWeekKm: ctx.previousWeekKm,
+    recentWeeklyKm: ctx.recentWeeklyKm,
+    trajectoryTargetKm: ctx.trajectoryTargetKm,
     tsb: ctx.tsb,
     aerobicTsb: ctx.aerobicTsb,
     totalAtl: ctx.totalAtl,

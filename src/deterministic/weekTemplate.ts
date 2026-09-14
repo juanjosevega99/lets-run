@@ -13,6 +13,7 @@
 import type { Limiter } from "./limiter.js";
 import type { TrainingPhase } from "./trainingPhase.js";
 import { keyRunDay } from "./schedule.js";
+import { MAX_WEEKLY_PROGRESSION } from "./validator.js";
 import type { WeekDecision } from "../plan/review.js";
 
 export interface TemplateSession {
@@ -37,6 +38,14 @@ export interface WeekTemplateInput {
   limiterReason: string;
   trainingPhase: TrainingPhase;
   previousWeekKm: number | null;
+  /** Completed weekly running volume, oldest first — lets the controller recover ground. */
+  recentWeeklyKm?: number[];
+  /**
+   * Where the race trajectory says this week should land (`trajectory.thisWeekTargetKm`).
+   * Shapes growth that readiness has ALREADY earned; it can never create growth on its
+   * own — see plannedRunVolumeCeiling.
+   */
+  trajectoryTargetKm?: number | null;
   tsb: number;
   /** Run + aerobic cross-training balance; may guard running after unusually heavy aerobic work. */
   aerobicTsb?: number | null;
@@ -62,6 +71,14 @@ const DEFAULT_RETURN_KM = 10;
 const DEFAULT_STARTING_KM = 12;
 const HIGH_SESSION_SHARE = 0.18; // well under the validator's 25% high-intensity ceiling
 const LONG_RUN_SHARE_BASE = 0.3; // aerobic_base / long_endurance key session
+/**
+ * The long run has to actually BE the longest run of the week. A flat 30% share fails
+ * that whenever the week has three run days, where an even split is already 33% — the
+ * "key session" came out SHORTER than each easy run (2.6km key beside two 3.1km easy
+ * runs). Scaling the floor with run frequency keeps the long run ~20% longer than an
+ * easy day at any run-day count.
+ */
+const LONG_RUN_MIN_RATIO_TO_EVEN = 1.2;
 const LONG_RUN_SHARE_SUPPORT = 0.28; // long run as a support session (threshold/race_specific weeks)
 export const RUNNING_LOAD_GUARDRAIL = -20;
 
@@ -106,7 +123,7 @@ function allEasyWeek(
   // each to nearest can — see weekTemplate.test.ts for the case that caught this).
   const keyDay = keyRunDay(x.runDays, true);
   const easyDays = x.runDays.filter((d) => d !== keyDay);
-  const rawKey = totalKm * LONG_RUN_SHARE_BASE;
+  const rawKey = totalKm * longRunShare(x.runDays.length);
   const sessionCap = x.longestRunKm30d > 0 ? x.longestRunKm30d * 1.1 : 4;
   const rawEasy = easyDays.length > 0 ? (totalKm - rawKey) / easyDays.length : 0;
   const keyKm = floor1(Math.min(rawKey, sessionCap));
@@ -311,13 +328,57 @@ export function runningProgressionFactor(
   }
 }
 
+/**
+ * Weeks the controller looks back over when recovering ground the athlete has already
+ * covered. Long enough to survive a single interrupted week; short enough that it can
+ * never resurrect a fitness level that has since decayed away.
+ */
+const RECENT_PEAK_WEEKS = 4;
+/**
+ * Fraction of a recent peak week the plan may return to directly. Returning to 80% of
+ * a load COMPLETED within the last month is re-entry, not progression — and the
+ * per-session caps in allEasyWeek/returnToRunWeek still hold any single run to +10% of
+ * the longest recent run, which is where the injury evidence actually sits (BJSM 2025,
+ * cited in NEXT_STEPS.md). Weekly totals and session length are separate guardrails.
+ */
+const RECENT_PEAK_RECOVERY_SHARE = 0.8;
+
 /** Exact weekly running ceiling shared by both planner implementations. */
 export function plannedRunVolumeCeiling(
-  x: Pick<WeekTemplateInput, "trainingPhase" | "previousWeekKm" | "tsb" | "aerobicTsb" | "previousDecision">,
+  x: Pick<
+    WeekTemplateInput,
+    | "trainingPhase"
+    | "previousWeekKm"
+    | "recentWeeklyKm"
+    | "trajectoryTargetKm"
+    | "tsb"
+    | "aerobicTsb"
+    | "previousDecision"
+  >,
 ): number {
   const defaultKm = x.trainingPhase === "return_to_run" ? DEFAULT_RETURN_KM : DEFAULT_STARTING_KM;
-  const baseline = x.previousWeekKm != null && x.previousWeekKm > 0 ? x.previousWeekKm : defaultKm;
-  return round1(baseline * runningProgressionFactor(x));
+  const previousKm = x.previousWeekKm != null && x.previousWeekKm > 0 ? x.previousWeekKm : defaultKm;
+  // Anchoring ONLY on last week made the plan a follower: one interrupted week reset
+  // the baseline permanently, so the prescription ratcheted down below what the athlete
+  // was already running unprompted (key session 5.4 -> 4.5 -> 1.6km against a 5.6km
+  // longest run) and became safe to ignore. A taper never looks backwards for volume.
+  const recentPeakKm = Math.max(0, ...(x.recentWeeklyKm ?? []).slice(-RECENT_PEAK_WEEKS));
+  const baseline =
+    x.trainingPhase === "taper"
+      ? previousKm
+      : Math.max(previousKm, recentPeakKm * RECENT_PEAK_RECOVERY_SHARE);
+  const factor = runningProgressionFactor(x);
+  const planned = baseline * factor;
+  // The race trajectory may SHAPE growth the athlete has already earned — it must never
+  // CREATE it. Readiness outranks the calendar (PROJECT.md; NEXT_STEPS "First coaching
+  // verdict"), so a week that has not earned PROGRESS stays flat no matter how far
+  // behind the curve it is: being behind is a reason to be told, not to be pushed. When
+  // growth IS earned, the trajectory can lift it toward the target, still bounded by the
+  // same +10% the S2 validator enforces.
+  if (factor <= 1 || x.trajectoryTargetKm == null || x.trainingPhase === "taper") {
+    return round1(planned);
+  }
+  return round1(Math.min(Math.max(planned, x.trajectoryTargetKm), baseline * MAX_WEEKLY_PROGRESSION));
 }
 
 /** "7:20/km" — no leading " @ ", for use mid-sentence. */
@@ -340,6 +401,16 @@ function paceSuffix(secPerKm: number | null): string {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+/**
+ * Share of weekly volume the long run takes, floored so it stays clearly the longest
+ * session of the week (see LONG_RUN_MIN_RATIO_TO_EVEN). Clamped to 1 so a one-run
+ * week gives the whole dose to the key session instead of overflowing it.
+ */
+function longRunShare(runDayCount: number): number {
+  if (runDayCount <= 0) return LONG_RUN_SHARE_BASE;
+  return Math.min(1, Math.max(LONG_RUN_SHARE_BASE, LONG_RUN_MIN_RATIO_TO_EVEN / runDayCount));
 }
 
 /** Rounds DOWN to 1 decimal — used for per-session km so independently-rounded

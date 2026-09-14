@@ -3,6 +3,14 @@ import type { PlannedSession } from "../deterministic/validator.js";
 import { dateOnly } from "../lib/time.js";
 import { dashboardTz } from "../web/queries.js";
 import type { Log } from "../strava/sync.js";
+import {
+  deriveReadiness,
+  type GymDifficulty,
+  type GymFocus,
+  type PainLevel,
+  type SessionFeedback,
+  type SorenessLevel,
+} from "./feedback.js";
 
 export type WeekDecision = "PROGRESS" | "REPEAT" | "PROCEED" | "DELOAD";
 
@@ -20,6 +28,13 @@ export interface WeekReviewInput {
   redFlag?: boolean;
   /** Must be explicit; missing subjective data cannot earn progression. */
   readinessConfirmed?: boolean;
+  /**
+   * Credit the key session from any day of the week instead of within +/-1 day. True
+   * for an all-easy week, where the "key session" is simply the week's longest easy
+   * run and its calendar slot carries no physiological meaning. Weeks with a real
+   * intensity structure keep the strict window — there, placement IS the prescription.
+   */
+  keyMatchesAnyDay?: boolean;
 }
 
 export interface WeekReviewResult {
@@ -45,22 +60,30 @@ export function reviewWeek(x: WeekReviewInput): WeekReviewResult {
   // Match the key first, then other runs. A planned run moved by one day still
   // counts, while one actual run cannot satisfy multiple planned sessions.
   const unmatched = x.actualRuns.map((r) => ({ ...r, distanceKm: Math.max(0, r.distanceKm) }));
-  const match = (session: PlannedSession): boolean => {
+  const byDuration = (session: PlannedSession): boolean =>
+    session.plannedMinutes != null && session.plannedMinutes > 0;
+  const dose = (session: PlannedSession, run: ActualRun): number =>
+    byDuration(session) ? (run.durationMinutes ?? 0) : run.distanceKm;
+  const match = (session: PlannedSession, anyDay = false): boolean => {
     if (session.plannedKm <= 0 && (session.plannedMinutes ?? 0) <= 0) return true;
+    const required = byDuration(session) ? 0.75 * session.plannedMinutes! : 0.75 * session.plannedKm;
     let best = -1;
     for (let i = 0; i < unmatched.length; i++) {
       const candidate = unmatched[i]!;
-      const doseComplete =
-        session.plannedMinutes != null && session.plannedMinutes > 0
-          ? (candidate.durationMinutes ?? 0) >= 0.75 * session.plannedMinutes
-          : candidate.distanceKm >= 0.75 * session.plannedKm;
-      if (Math.abs(candidate.day - session.day) > 1 || !doseComplete) continue;
-      if (
-        best < 0 ||
-        Math.abs(candidate.day - session.day) < Math.abs(unmatched[best]!.day - session.day) ||
-        (Math.abs(candidate.day - session.day) === Math.abs(unmatched[best]!.day - session.day) &&
-          candidate.distanceKm > unmatched[best]!.distanceKm)
-      ) {
+      if (dose(session, candidate) < required) continue;
+      if (!anyDay && Math.abs(candidate.day - session.day) > 1) continue;
+      if (best < 0) {
+        best = i;
+        continue;
+      }
+      const incumbent = unmatched[best]!;
+      // Day-anchored sessions still prefer the nearest day; a session that may land on
+      // any day is credited to the BIGGEST qualifying run, so the key is never spent on
+      // a short midweek jog while the week's real long run counts as filler.
+      const nearer = Math.abs(candidate.day - session.day) - Math.abs(incumbent.day - session.day);
+      if (anyDay || nearer === 0) {
+        if (dose(session, candidate) > dose(session, incumbent)) best = i;
+      } else if (nearer < 0) {
         best = i;
       }
     }
@@ -68,7 +91,7 @@ export function reviewWeek(x: WeekReviewInput): WeekReviewResult {
     unmatched.splice(best, 1);
     return true;
   };
-  const keyCompleted = match(x.keySession);
+  const keyCompleted = match(x.keySession, x.keyMatchesAnyDay === true);
   const completed = plannedRuns.filter((s) => s !== x.keySession && match(s));
   if (plannedRuns.includes(x.keySession) && keyCompleted) completed.push(x.keySession);
   // Extra running is load, not extra credit. It must not manufacture >100% compliance.
@@ -150,17 +173,42 @@ export async function reviewLatestCompletedWeek(
 
   const weekStart = dateOnly(plan.week_start);
   const tz = dashboardTz();
-  const rows = await sql<{ day: number; distance_km: number; duration_minutes: number }[]>`
-    select (extract(isodow from start_date at time zone ${tz})::int - 1) as day,
-           coalesce(sum(distance_m), 0) / 1000.0 as distance_km,
-           coalesce(sum(case when moving_time_s > 0 then moving_time_s else elapsed_time_s end), 0) / 60.0
-             as duration_minutes
-    from activities
-    where sport_type ilike '%run%'
-      and (start_date at time zone ${tz}) >= ${weekStart}::date
-      and (start_date at time zone ${tz}) < (${weekStart}::date + interval '7 days')
-    group by 1 order by 1
+  // Per-ACTIVITY rows, not per-day sums: the ids are what check-ins are filed under,
+  // and readiness is derived from them. Runs are re-aggregated per day below so the
+  // planned-vs-actual matching behaves exactly as it did before.
+  const activities = await sql<
+    { id: string | number; day: number; distance_km: number; duration_minutes: number; sport_type: string }[]
+  >`
+    select a.id,
+           (extract(isodow from a.start_date at time zone ${tz})::int - 1) as day,
+           coalesce(a.distance_m, 0) / 1000.0 as distance_km,
+           coalesce(case when a.moving_time_s > 0 then a.moving_time_s else a.elapsed_time_s end, 0) / 60.0
+             as duration_minutes,
+           a.sport_type
+    from activities a
+    where (a.start_date at time zone ${tz}) >= ${weekStart}::date
+      and (a.start_date at time zone ${tz}) < (${weekStart}::date + interval '7 days')
+    order by a.start_date
   `;
+
+  const runActivities = activities.filter((a) => /run/i.test(a.sport_type));
+  const byDay = new Map<number, { day: number; distanceKm: number; durationMinutes: number }>();
+  for (const run of runActivities) {
+    const bucket = byDay.get(run.day) ?? { day: run.day, distanceKm: 0, durationMinutes: 0 };
+    bucket.distanceKm += Number(run.distance_km);
+    bucket.durationMinutes += Number(run.duration_minutes);
+    byDay.set(run.day, bucket);
+  }
+  const rows = [...byDay.values()].sort((a, b) => a.day - b.day);
+
+  // A painful GYM session is still a stop signal, so readiness reads the whole week's
+  // check-ins — but only RUNS can confirm that impact was tolerated.
+  const weekFeedback =
+    activities.length > 0 ? await feedbackForActivities(sql, activities.map((a) => Number(a.id))) : [];
+  const readiness = deriveReadiness(
+    runActivities.map((a) => Number(a.id)),
+    weekFeedback,
+  );
 
   const toPlanned = (s: StoredSession): PlannedSession => ({
     day: s.day,
@@ -171,14 +219,18 @@ export async function reviewLatestCompletedWeek(
   });
   const key = toPlanned(plan.key_session);
   const sessions = [key, ...plan.support_sessions.map(toPlanned)];
+  // An all-easy week prescribes a dose, not a date. Scoring its key session within
+  // +/-1 day marked genuine long runs as missed — 61 logged minutes against 45 planned,
+  // including a run 2.7x the planned key, still scored REPEAT because it fell on Monday
+  // instead of Sunday. That REPEAT then held the next week's progression flat.
+  const keyMatchesAnyDay = sessions.every((s) => s.intensity !== "high");
   const result = reviewWeek({
     sessions,
     keySession: key,
-    actualRuns: rows.map((r) => ({
-      day: r.day,
-      distanceKm: Number(r.distance_km),
-      durationMinutes: Number(r.duration_minutes),
-    })),
+    keyMatchesAnyDay,
+    actualRuns: rows,
+    redFlag: readiness.redFlag,
+    readinessConfirmed: readiness.readinessConfirmed,
   });
 
   await sql`
@@ -193,7 +245,11 @@ export async function reviewLatestCompletedWeek(
         key_completed: result.keyCompleted,
         completed_run_sessions: result.completedRunSessions,
         planned_run_sessions: result.plannedRunSessions,
-        readiness_confirmed: false,
+        readiness_confirmed: readiness.readinessConfirmed,
+        red_flag: readiness.redFlag,
+        readiness_reasons: readiness.reasons,
+        runs_checked_in: readiness.runsCheckedIn,
+        runs_total: readiness.runsTotal,
       })},
       ${result.explanation}
     )
@@ -206,8 +262,38 @@ export async function reviewLatestCompletedWeek(
       explanation = excluded.explanation,
       reviewed_at = now()
   `;
-  log(`week review ${weekStart}: ${result.decision} · ${result.compliancePct.toFixed(0)}% · key ${result.keyCompleted ? "done" : "missed"}`);
+  log(
+    `week review ${weekStart}: ${result.decision} · ${result.compliancePct.toFixed(0)}% · key ${result.keyCompleted ? "done" : "missed"} · check-ins ${readiness.runsCheckedIn}/${readiness.runsTotal}${readiness.reasons.length > 0 ? ` · ${readiness.reasons[0]}` : ""}`,
+  );
   return result;
+}
+
+/** The week's check-ins, keyed by activity id. Empty list in, empty list out. */
+async function feedbackForActivities(sql: Sql, activityIds: number[]): Promise<SessionFeedback[]> {
+  if (activityIds.length === 0) return [];
+  const rows = await sql<
+    {
+      activity_id: string | number;
+      rpe: number | null;
+      pain_during: PainLevel;
+      morning_soreness: SorenessLevel;
+      gym_focus: GymFocus | null;
+      lower_body_difficulty: GymDifficulty | null;
+      notes: string | null;
+    }[]
+  >`
+    select activity_id, rpe, pain_during, morning_soreness, gym_focus, lower_body_difficulty, notes
+    from session_feedback where activity_id = any(${activityIds})
+  `;
+  return rows.map((r) => ({
+    activityId: Number(r.activity_id),
+    rpe: r.rpe,
+    painDuring: r.pain_during,
+    morningSoreness: r.morning_soreness,
+    gymFocus: r.gym_focus,
+    lowerBodyDifficulty: r.lower_body_difficulty,
+    notes: r.notes,
+  }));
 }
 
 export async function latestWeekDecision(sql: Sql): Promise<WeekDecision | null> {

@@ -1,7 +1,6 @@
 # P1 implementation spec — a real current-shape estimate and a real race-day forecast
 
-> **Audience:** an implementing agent/model with NO prior context. Companion to
-> `docs/p0-checkin-implementation.md` (same handoff format). Written 2026-07-19 against
+> **Audience:** an implementing agent/model with NO prior context. Written 2026-07-19 against
 > commit `a2d5d68` + uncommitted working-tree changes. Verify file anchors before
 > editing; the repo moves fast.
 >

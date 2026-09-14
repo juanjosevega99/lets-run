@@ -2,6 +2,13 @@ import type { Sql } from "../db.js";
 import { dateOnly } from "../lib/time.js";
 import { hrBands, median, resolveHrMax, type HrBand } from "../deterministic/zones.js";
 import { accumulateZoneTime, emptyZoneTotals, type ZoneTotals } from "../deterministic/zoneTime.js";
+import type {
+  GymDifficulty,
+  GymFocus,
+  PainLevel,
+  SessionFeedback,
+  SorenessLevel,
+} from "../plan/feedback.js";
 
 /**
  * Display-level SQL aggregations for the dashboard. Deliberately dumb: sums, counts,
@@ -107,6 +114,8 @@ export async function recentSnapshot(sql: Sql, days: number): Promise<RecentSnap
 }
 
 export interface LoggedActivity {
+  /** Strava activity id — the stable key check-ins are filed under. */
+  id: number;
   startDate: Date;
   name: string;
   sportType: string;
@@ -114,45 +123,95 @@ export interface LoggedActivity {
   movingTimeS: number | null;
 }
 
+export interface CheckinActivity extends LoggedActivity {
+  feedback: SessionFeedback | null;
+}
+
+interface ActivityRow {
+  id: string | number;
+  start_date: Date;
+  name: string;
+  sport_type: string;
+  distance_m: number | null;
+  moving_time_s: number | null;
+}
+
+function toLoggedActivity(r: ActivityRow): LoggedActivity {
+  return {
+    id: Number(r.id),
+    startDate: r.start_date,
+    name: r.name,
+    sportType: r.sport_type,
+    distanceM: r.distance_m,
+    movingTimeS: r.moving_time_s,
+  };
+}
+
 /** Activities in the current local ISO week, oldest first. */
 export async function thisWeekActivities(sql: Sql): Promise<LoggedActivity[]> {
   const tz = dashboardTz();
-  const rows = await sql<
-    { start_date: Date; name: string; sport_type: string; distance_m: number | null; moving_time_s: number | null }[]
-  >`
-    select start_date, name, sport_type, distance_m, moving_time_s
+  const rows = await sql<ActivityRow[]>`
+    select id, start_date, name, sport_type, distance_m, moving_time_s
     from activities
     where date_trunc('week', start_date at time zone ${tz})
           = date_trunc('week', now() at time zone ${tz})
     order by start_date
   `;
-  return rows.map((r) => ({
-    startDate: r.start_date,
-    name: r.name,
-    sportType: r.sport_type,
-    distanceM: r.distance_m,
-    movingTimeS: r.moving_time_s,
-  }));
+  return rows.map(toLoggedActivity);
 }
 
 /** Activities whose athlete-local date falls inside a specific Monday-start week. */
 export async function activitiesForWeek(sql: Sql, weekStart: string): Promise<LoggedActivity[]> {
   const tz = dashboardTz();
-  const rows = await sql<
-    { start_date: Date; name: string; sport_type: string; distance_m: number | null; moving_time_s: number | null }[]
-  >`
-    select start_date, name, sport_type, distance_m, moving_time_s
+  const rows = await sql<ActivityRow[]>`
+    select id, start_date, name, sport_type, distance_m, moving_time_s
     from activities
     where (start_date at time zone ${tz}) >= ${weekStart}::date
       and (start_date at time zone ${tz}) < (${weekStart}::date + interval '7 days')
     order by start_date
   `;
+  return rows.map(toLoggedActivity);
+}
+
+/**
+ * Recent activities with any existing check-in, newest first. The window is wider than
+ * a week on purpose: during a Monday replan last week's runs must still be reachable,
+ * because their check-ins are what the review about to run depends on.
+ */
+export async function checkinActivities(sql: Sql, days: number): Promise<CheckinActivity[]> {
+  const rows = await sql<
+    (ActivityRow & {
+      fb_activity_id: string | number | null;
+      rpe: number | null;
+      pain_during: PainLevel | null;
+      morning_soreness: SorenessLevel | null;
+      gym_focus: GymFocus | null;
+      lower_body_difficulty: GymDifficulty | null;
+      notes: string | null;
+    })[]
+  >`
+    select a.id, a.start_date, a.name, a.sport_type, a.distance_m, a.moving_time_s,
+           f.activity_id as fb_activity_id, f.rpe, f.pain_during, f.morning_soreness,
+           f.gym_focus, f.lower_body_difficulty, f.notes
+    from activities a
+    left join session_feedback f on f.activity_id = a.id
+    where a.start_date >= now() - make_interval(days => ${days})
+    order by a.start_date desc
+  `;
   return rows.map((r) => ({
-    startDate: r.start_date,
-    name: r.name,
-    sportType: r.sport_type,
-    distanceM: r.distance_m,
-    movingTimeS: r.moving_time_s,
+    ...toLoggedActivity(r),
+    feedback:
+      r.fb_activity_id == null
+        ? null
+        : {
+            activityId: Number(r.fb_activity_id),
+            rpe: r.rpe,
+            painDuring: r.pain_during ?? "not_reported",
+            morningSoreness: r.morning_soreness ?? "not_reported",
+            gymFocus: r.gym_focus,
+            lowerBodyDifficulty: r.lower_body_difficulty,
+            notes: r.notes,
+          },
   }));
 }
 

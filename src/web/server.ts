@@ -19,8 +19,10 @@ import {
   thisWeekActivities,
   weeklyRunVolume,
   zoneReport,
+  checkinActivities,
 } from "./queries.js";
-import { reviewCutoffForReplan } from "../plan/context.js";
+import { buildPlanContext, reviewCutoffForReplan } from "../plan/context.js";
+import { parseFeedbackForm } from "../plan/feedback.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
@@ -78,6 +80,58 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
     return;
   }
 
+  // The second write endpoint: one post-session check-in. POST only for the same
+  // reason as /actions/refresh — a prefetch or crawler must never write training data.
+  if (path === "/actions/checkin") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "content-type": "text/plain", allow: "POST" });
+      res.end("POST required");
+      return;
+    }
+    try {
+      const raw = await readBody(req);
+      if (raw === null) {
+        res.writeHead(413, { "content-type": "text/plain" });
+        res.end("body too large");
+        return;
+      }
+      const parsed = parseFeedbackForm(new URLSearchParams(raw));
+      if (typeof parsed === "string") {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end(parsed);
+        return;
+      }
+      await sql`
+        insert into session_feedback (activity_id, rpe, pain_during, morning_soreness,
+                                      gym_focus, lower_body_difficulty, notes)
+        values (${parsed.activityId}, ${parsed.rpe}, ${parsed.painDuring}, ${parsed.morningSoreness},
+                ${parsed.gymFocus}, ${parsed.lowerBodyDifficulty}, ${parsed.notes})
+        on conflict (activity_id) do update set
+          rpe = excluded.rpe,
+          pain_during = excluded.pain_during,
+          morning_soreness = excluded.morning_soreness,
+          gym_focus = excluded.gym_focus,
+          lower_body_difficulty = excluded.lower_body_difficulty,
+          notes = excluded.notes,
+          updated_at = now()
+      `;
+      // Post/Redirect/Get: the dashboard is server-rendered, so a reload after saving
+      // must not resubmit the form.
+      res.writeHead(303, { location: "/week" });
+      res.end();
+    } catch (err) {
+      if ((err as { code?: string }).code === "23503") {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("unknown activity");
+        return;
+      }
+      console.error(err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end(`error: ${(err as Error).message}`);
+    }
+    return;
+  }
+
   try {
     const body = await route(path ?? "/");
     if (body === null) {
@@ -92,6 +146,21 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
     res.writeHead(500, { "content-type": "text/plain" });
     res.end(`error: ${(err as Error).message}`);
   }
+}
+
+const MAX_BODY_BYTES = 32 * 1024;
+
+/** Collects a urlencoded request body, or null when it exceeds the size cap. */
+async function readBody(req: IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    size += buf.length;
+    if (size > MAX_BODY_BYTES) return null;
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 async function route(path: string): Promise<string | null> {
@@ -127,11 +196,14 @@ async function route(path: string): Promise<string | null> {
       const plan = await latestPlan(sql, coachingWeek);
       // Show actuals from the same dates as the displayed prescription. Previously
       // a future plan could sit beside the current calendar week's activities.
-      const activities = plan ? await activitiesForWeek(sql, plan.weekStart) : await thisWeekActivities(sql);
+      const [activities, checkin] = await Promise.all([
+        plan ? activitiesForWeek(sql, plan.weekStart) : thisWeekActivities(sql),
+        checkinActivities(sql, 10),
+      ]);
       return layout(
         "lets-run · plan week",
         "/week",
-        renderWeek({ activities, plan, tz: dashboardTz() }),
+        renderWeek({ activities, plan, checkin, tz: dashboardTz() }),
       );
     }
     case "/zones": {
@@ -139,15 +211,24 @@ async function route(path: string): Promise<string | null> {
       return layout("lets-run · zones", "/zones", renderZones({ report, tz: dashboardTz() }));
     }
     case "/trajectory": {
-      const [weeks, peakAvgKm, predictions] = await Promise.all([
+      const [weeks, peakAvgKm, predictions, planCtx] = await Promise.all([
         weeklyRunVolume(sql, 52),
         peakEraWeeklyAvgKm(sql),
         livePredictions(sql),
+        // The forward model needs the same context the planner uses. A failure here
+        // must not take the whole page down — the history above it still stands.
+        buildPlanContext(sql).catch(() => null),
       ]);
       return layout(
         "lets-run · trajectory",
         "/trajectory",
-        renderTrajectory({ weeks, peakAvgKm, predictions, tz: dashboardTz() }),
+        renderTrajectory({
+          weeks,
+          peakAvgKm,
+          predictions,
+          trajectory: planCtx?.trajectory ?? null,
+          tz: dashboardTz(),
+        }),
       );
     }
     default:

@@ -3,6 +3,7 @@ import type { LimiterResult } from "../deterministic/limiter.js";
 import type { TrainingPhase } from "../deterministic/trainingPhase.js";
 import { formatDuration } from "../lib/time.js";
 import { plannedRunVolumeCeiling } from "../deterministic/weekTemplate.js";
+import type { Trajectory } from "../deterministic/trajectory.js";
 import { toValidatorSessions, type GeneratedPlan } from "./schema.js";
 import type { WeekDecision } from "./review.js";
 
@@ -28,6 +29,9 @@ export interface PlanContext {
   totalTsb: number | null;
   previousWeekKm: number | null;
   recentWeeklyKm: number[]; // last ~4 weeks, oldest first
+  /** Forward model: what the race still requires, and how much slack is left. */
+  trajectory: Trajectory;
+  trajectoryTargetKm: number | null;
   runs28d: number;
   activeRunWeeks4: number;
   daysSinceLastRun: number | null;
@@ -176,6 +180,8 @@ export function plannedRunCeiling(ctx: PlanContext): number {
   return plannedRunVolumeCeiling({
     trainingPhase: ctx.trainingPhase,
     previousWeekKm: ctx.previousWeekKm,
+    recentWeeklyKm: ctx.recentWeeklyKm,
+    trajectoryTargetKm: ctx.trajectoryTargetKm,
     tsb: ctx.tsb,
     aerobicTsb: ctx.aerobicTsb,
     previousDecision: ctx.previousDecision,

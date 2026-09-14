@@ -3,12 +3,57 @@ import { dateInTimeZone, formatDuration } from "../../lib/time.js";
 import { esc } from "../html.js";
 import { RACE } from "../../lib/race.js";
 import type { PredictionRow, WeekVolume } from "../queries.js";
+import type { Trajectory } from "../../deterministic/trajectory.js";
 
 export interface TrajectoryData {
   weeks: WeekVolume[];
   peakAvgKm: number | null;
   predictions: PredictionRow[];
+  trajectory: Trajectory | null;
   tz: string;
+}
+
+const STATUS_LABELS: Record<Trajectory["status"], string> = {
+  no_baseline: "No baseline yet",
+  taper: "Tapering",
+  arrived: "At race volume",
+  on_track: "On track",
+  tight: "Tight",
+  at_risk: "At risk",
+  unreachable: "Out of reach",
+};
+
+/**
+ * The forward half of the page. Everything above it describes what has happened; this
+ * says what the race still requires — and, most usefully, how many whole weeks can
+ * still be missed before the goal itself has to change.
+ */
+function renderRequired(t: Trajectory | null): string {
+  if (t == null) return "";
+  const pct = (value: number | null) => (value == null ? "—" : `+${(value * 100).toFixed(1)}%`);
+  const slack =
+    t.slackWeeks == null
+      ? "—"
+      : t.slackWeeks <= 0
+        ? "None left"
+        : `${t.slackWeeks} ${t.slackWeeks === 1 ? "week" : "weeks"}`;
+  return `
+  <section class="section-block" aria-labelledby="required-heading">
+    <div class="section-heading">
+      <div><p class="eyebrow">What the race still asks</p><h2 id="required-heading">Required trajectory</h2></div>
+      <p class="section-copy">Worked backwards from race day, excluding the taper and one down week in four. Growth is compounding, so the rate matters more than any single week.</p>
+    </div>
+    <article class="chart-panel panel">
+      <div class="plan-summary" aria-label="Required trajectory">
+        <span class="pill${t.status === "on_track" || t.status === "arrived" ? "" : " pill--accent"}">${esc(STATUS_LABELS[t.status])}</span>
+        <span class="pill">Weekly volume · ${pct(t.requiredWeeklyGrowth)}/wk</span>
+        <span class="pill">Long run · ${pct(t.requiredLongRunGrowth)}/wk</span>
+        <span class="pill pill--muted">Target · ${t.peakWeeklyKm.toFixed(0)} km/wk with a ${t.peakLongRunKm.toFixed(0)} km long run</span>
+        <span class="pill${t.slackWeeks != null && t.slackWeeks < 2 ? " pill--accent" : " pill--muted"}">Weeks you can still miss · ${slack}</span>
+      </div>
+      <p class="sub" style="margin:1rem 0 0">${esc(t.headline)}</p>
+    </article>
+  </section>`;
 }
 
 export function renderTrajectory(d: TrajectoryData): string {
@@ -53,6 +98,8 @@ export function renderTrajectory(d: TrajectoryData): string {
       <p class="sub" style="margin:1rem 0 0">Zero weeks remain visible. The reference line is context for a gradual rebuild, not next week’s prescription.</p>
     </article>
   </section>
+
+  ${renderRequired(d.trajectory)}
 
   ${renderPredictionHistory(d.predictions, d.tz)}
   `;

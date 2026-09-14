@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateWeekPlan, buildUserPrompt, plannedRunCeiling, MAX_ATTEMPTS, type PlanContext } from "./generate.js";
 import type { GeneratedPlan } from "./schema.js";
+import { raceTrajectory } from "../deterministic/trajectory.js";
 
 const ctx: PlanContext = {
   limiter: { limiter: "aerobic_base", reason: "CTL 1% of peak" },
@@ -14,6 +15,13 @@ const ctx: PlanContext = {
   totalTsb: -8.7,
   previousWeekKm: 20,
   recentWeeklyKm: [0, 5, 12, 20],
+  trajectory: raceTrajectory({
+    raceKm: 21.0975,
+    weeksToRace: 33,
+    currentWeeklyKm: 9.25,
+    currentLongestRunKm: 5.6,
+  }),
+  trajectoryTargetKm: null,
   runs28d: 0,
   activeRunWeeks4: 0,
   daysSinceLastRun: 81,

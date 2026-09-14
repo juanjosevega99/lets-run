@@ -1,10 +1,12 @@
 import { esc } from "../html.js";
 import { formatDuration, formatPace } from "../../lib/time.js";
-import type { LoggedActivity, PlanRow, PlanSessionRow } from "../queries.js";
+import type { CheckinActivity, LoggedActivity, PlanRow, PlanSessionRow } from "../queries.js";
+import type { SessionFeedback } from "../../plan/feedback.js";
 
 export interface WeekData {
   activities: LoggedActivity[];
   plan: PlanRow | null;
+  checkin: CheckinActivity[];
   tz: string;
 }
 
@@ -34,10 +36,96 @@ export function renderWeek(d: WeekData): string {
       : `<section class="panel" style="padding:1.4rem"><p class="empty">No plan is available yet. Use <strong>Update training</strong> to create the next week after your activities are current.</p></section>`
   }
 
+  <section class="section-block" aria-labelledby="checkin-heading">
+    <div class="section-heading"><div><p class="eyebrow">Check-in</p><h2 id="checkin-heading">How did it feel?</h2></div><p class="section-copy">Only pain-free check-ins unlock a bigger week. Missing feedback holds the plan steady, and a pain report reduces it. Twenty seconds each.</p></div>
+    ${renderCheckin(d.checkin, d.tz)}
+  </section>
+
   <section class="section-block" aria-labelledby="logged-heading">
     <div class="section-heading"><div><p class="eyebrow">Actual work</p><h2 id="logged-heading">Logged in this plan week</h2></div><p class="section-copy">The coach compares completed work with the prescription before building the next week.</p></div>
     ${renderLogged(d.activities, d.tz)}
   </section>`;
+}
+
+const PAIN_OPTIONS: [string, string][] = [
+  ["not_reported", "Not reported"],
+  ["none", "No pain"],
+  ["mild", "Mild pain"],
+  ["significant", "Significant pain"],
+];
+const SORENESS_OPTIONS: [string, string][] = [
+  ["not_reported", "Not reported"],
+  ["none", "None"],
+  ["normal", "Normal post-training"],
+  ["unusual", "Unusual soreness"],
+];
+const GYM_FOCUS_OPTIONS: [string, string][] = [
+  ["", "Not reported"],
+  ["upper", "Upper"],
+  ["lower", "Lower"],
+  ["full", "Full body"],
+];
+const GYM_DIFFICULTY_OPTIONS: [string, string][] = [
+  ["", "Not reported"],
+  ["easy", "Easy"],
+  ["moderate", "Moderate"],
+  ["hard", "Hard"],
+];
+
+function renderCheckin(activities: CheckinActivity[], tz: string): string {
+  if (activities.length === 0) {
+    return `<p class="empty">No recent sessions to check in on yet. They appear here as soon as an activity syncs.</p>`;
+  }
+  const dayFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: tz });
+  return `<div class="checkin-list">${activities.map((a) => renderCheckinRow(a, dayFmt)).join("")}</div>`;
+}
+
+function renderCheckinRow(activity: CheckinActivity, dayFmt: Intl.DateTimeFormat): string {
+  const strength = /weight|strength|workout/i.test(activity.sportType);
+  const fb = activity.feedback;
+  const form = `<form class="checkin-form" method="post" action="/actions/checkin">
+    <input type="hidden" name="activity_id" value="${activity.id}">
+    <label>RPE${select("rpe", rpeOptions(), fb?.rpe != null ? String(fb.rpe) : "")}</label>
+    <label>Pain during${select("pain_during", PAIN_OPTIONS, fb?.painDuring ?? "not_reported")}</label>
+    <label>Next morning${select("morning_soreness", SORENESS_OPTIONS, fb?.morningSoreness ?? "not_reported")}</label>
+    ${
+      strength
+        ? `<label>Gym focus${select("gym_focus", GYM_FOCUS_OPTIONS, fb?.gymFocus ?? "")}</label>
+    <label>Lower body${select("lower_body_difficulty", GYM_DIFFICULTY_OPTIONS, fb?.lowerBodyDifficulty ?? "")}</label>`
+        : ""
+    }
+    <button type="submit">${fb ? "Update check-in" : "Save check-in"}</button>
+  </form>`;
+
+  return `<article class="checkin-row${fb ? " checkin-row--done" : ""}">
+    <div class="checkin-head">
+      <span class="logged-day">${dayFmt.format(activity.startDate)}</span>
+      <div class="logged-name"><strong>${esc(activity.name)}</strong><span>${esc(activity.sportType)}</span></div>
+      ${fb ? `<span class="pill pill--muted">${esc(feedbackSummary(fb))}</span>` : `<span class="pill pill--accent">Needs check-in</span>`}
+    </div>
+    ${fb ? `<details><summary>Edit check-in</summary>${form}</details>` : form}
+  </article>`;
+}
+
+function feedbackSummary(fb: SessionFeedback): string {
+  const painLabel = label(PAIN_OPTIONS, fb.painDuring);
+  const sorenessLabel = label(SORENESS_OPTIONS, fb.morningSoreness);
+  return [fb.rpe != null ? `RPE ${fb.rpe}` : null, painLabel, sorenessLabel].filter(Boolean).join(" · ");
+}
+
+function label(options: [string, string][], value: string): string {
+  return options.find(([v]) => v === value)?.[1] ?? value;
+}
+
+function rpeOptions(): [string, string][] {
+  return [["", "Not reported"], ...Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])];
+}
+
+function select(name: string, options: [string, string][], selected: string): string {
+  const opts = options
+    .map(([value, text]) => `<option value="${esc(value)}"${value === selected ? " selected" : ""}>${esc(text)}</option>`)
+    .join("");
+  return `<select name="${esc(name)}">${opts}</select>`;
 }
 
 function renderPlan(plan: PlanRow): string {

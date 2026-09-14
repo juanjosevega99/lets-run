@@ -3,6 +3,7 @@ import type { PlanContext } from "./generate.js";
 import { trainingPaces, vdotFromRace } from "../deterministic/vdot.js";
 import { hrZones, median, resolveHrMax } from "../deterministic/zones.js";
 import { selectTrainingFocus, selectTrainingPhase } from "../deterministic/trainingPhase.js";
+import { raceTrajectory } from "../deterministic/trajectory.js";
 import { RACE, daysToRace } from "../lib/race.js";
 import { dateOnly } from "../lib/time.js";
 import { weeklyRunVolume, latestFitness, livePredictions, dashboardTz } from "../web/queries.js";
@@ -158,6 +159,17 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
     qualityShare28d,
   });
 
+  // Current position for the trajectory is the 4-week MEAN, not last week: the required
+  // rate should describe the level actually being sustained, not swing on one good or
+  // one interrupted week.
+  const recentKm = completedWeeks.map((w) => w.km).slice(-4);
+  const trajectory = raceTrajectory({
+    raceKm: RACE.distanceM / 1000,
+    weeksToRace: raceDays / 7,
+    currentWeeklyKm: recentKm.length > 0 ? recentKm.reduce((a, b) => a + b, 0) / recentKm.length : 0,
+    currentLongestRunKm: (recentRow.longest_30d_m ?? 0) / 1000,
+  });
+
   const predictions = await livePredictions(sql);
   const strengthDays = await loadStrengthDays(sql);
   const lowerBodyStrengthDays = parseDayList(process.env.ATHLETE_LOWER_BODY_DAYS);
@@ -178,6 +190,8 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
     totalTsb: fitness.totalTsb,
     previousWeekKm,
     recentWeeklyKm: completedWeeks.map((w) => w.km),
+    trajectory,
+    trajectoryTargetKm: trajectory.thisWeekTargetKm,
     runs28d,
     activeRunWeeks4,
     daysSinceLastRun: recentRow.days_since_last_run,

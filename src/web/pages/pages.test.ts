@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { raceTrajectory } from "../../deterministic/trajectory.js";
 import { renderNow, type NowData } from "./now.js";
 import { renderWeek } from "./week.js";
 import { renderTrajectory } from "./trajectory.js";
@@ -169,6 +170,7 @@ describe("renderWeek", () => {
   it("renders a generated plan as a friendly day-by-day schedule", () => {
     const html = renderWeek({
       tz: "America/Bogota",
+      checkin: [],
       activities: [],
       plan: {
         weekStart: "2026-07-20",
@@ -192,6 +194,7 @@ describe("renderWeek", () => {
   it("does not count a strength description mentioning a run as running", () => {
     const html = renderWeek({
       tz: "America/Bogota",
+      checkin: [],
       activities: [],
       plan: {
         weekStart: "2026-07-20",
@@ -210,12 +213,74 @@ describe("renderWeek", () => {
     expect(html).toContain("Return to running");
   });
 
+  it("renders a check-in form for an activity with no feedback yet", () => {
+    const html = renderWeek({
+      tz: "America/Bogota",
+      plan: null,
+      activities: [],
+      checkin: [
+        {
+          id: 771,
+          startDate: new Date("2026-09-07T14:00:00Z"),
+          name: "Afternoon Run",
+          sportType: "Run",
+          distanceM: 4130,
+          movingTimeS: 1860,
+          feedback: null,
+        },
+      ],
+    });
+    expect(html).toContain('action="/actions/checkin"');
+    expect(html).toContain('name="activity_id" value="771"');
+    expect(html).toContain('name="pain_during"');
+    expect(html).toContain('name="morning_soreness"');
+    expect(html).toContain("Save check-in");
+    expect(html).toContain("Needs check-in");
+    expect(html).not.toContain('name="gym_focus"');
+    expect(html).not.toContain("not_reported<");
+  });
+
+  it("adds gym fields for a strength session and prefills existing feedback", () => {
+    const html = renderWeek({
+      tz: "America/Bogota",
+      plan: null,
+      activities: [],
+      checkin: [
+        {
+          id: 902,
+          startDate: new Date("2026-09-07T12:00:00Z"),
+          name: "Morning Weight Training",
+          sportType: "WeightTraining",
+          distanceM: 0,
+          movingTimeS: 4800,
+          feedback: {
+            activityId: 902,
+            rpe: 7,
+            painDuring: "none",
+            morningSoreness: "normal",
+            gymFocus: "lower",
+            lowerBodyDifficulty: "hard",
+            notes: null,
+          },
+        },
+      ],
+    });
+    expect(html).toContain('name="gym_focus"');
+    expect(html).toContain('name="lower_body_difficulty"');
+    expect(html).toContain("Update check-in");
+    expect(html).toContain("RPE 7 · No pain · Normal post-training");
+    expect(html).toContain('<option value="lower" selected>Lower</option>');
+    expect(html).toContain('<option value="7" selected>7</option>');
+  });
+
   it("renders logged activities with day names in the local timezone", () => {
     const html = renderWeek({
       tz: "America/Bogota",
       plan: null,
+      checkin: [],
       activities: [
         {
+          id: 1,
           // 03:00 UTC Tuesday = 22:00 Monday in Bogota — must render as Mon
           startDate: new Date("2026-07-14T03:00:00Z"),
           name: "Night run",
@@ -232,7 +297,7 @@ describe("renderWeek", () => {
   });
 
   it("shows empty states for both plan and empty log", () => {
-    const html = renderWeek({ tz: "America/Bogota", activities: [], plan: null });
+    const html = renderWeek({ checkin: [], tz: "America/Bogota", activities: [], plan: null });
     expect(html).toContain("No plan is available yet");
     expect(html).toContain("Nothing logged yet in this plan week");
   });
@@ -241,6 +306,7 @@ describe("renderWeek", () => {
 describe("renderTrajectory", () => {
   it("charts weekly volume with the peak-era reference line", () => {
     const html = renderTrajectory({
+      trajectory: null,
       weeks: [
         { weekStart: "2026-06-29", km: 20, runs: 3 },
         { weekStart: "2026-07-06", km: 25, runs: 4 },
@@ -257,6 +323,7 @@ describe("renderTrajectory", () => {
 
   it("lists live predictions once they exist", () => {
     const html = renderTrajectory({
+      trajectory: null,
       weeks: [],
       peakAvgKm: null,
       tz: "America/Bogota",
@@ -277,6 +344,7 @@ describe("renderTrajectory", () => {
 
   it("shows paused rather than an over-optimistic time for an unanchored estimate", () => {
     const html = renderTrajectory({
+      trajectory: null,
       weeks: [],
       peakAvgKm: null,
       tz: "America/Bogota",
@@ -293,5 +361,47 @@ describe("renderTrajectory", () => {
     });
     expect(html).not.toContain("1:48:37");
     expect(html).toContain("Paused (no anchor)");
+  });
+});
+
+describe("renderTrajectory — required trajectory panel", () => {
+  const base = { weeks: [], peakAvgKm: null, predictions: [], tz: "America/Bogota" };
+
+  it("omits the panel entirely when no forward model is available", () => {
+    const html = renderTrajectory({ ...base, trajectory: null });
+    expect(html).not.toContain("Required trajectory");
+  });
+
+  it("shows the required rate and the weeks still available to miss", () => {
+    const html = renderTrajectory({
+      ...base,
+      trajectory: raceTrajectory({
+        raceKm: 21.0975,
+        weeksToRace: 33,
+        currentWeeklyKm: 9.1,
+        currentLongestRunKm: 5.61,
+      }),
+    });
+    expect(html).toContain("Required trajectory");
+    expect(html).toContain("Weeks you can still miss");
+    expect(html).toContain("Tight");
+    expect(html).toMatch(/Weekly volume · \+\d+\.\d%\/wk/);
+    expect(html).not.toContain("NaN");
+    expect(html).not.toContain("Infinity");
+    expect(html).not.toContain("at_risk");
+  });
+
+  it("says the goal has to move rather than prescribing an unsafe rate", () => {
+    const html = renderTrajectory({
+      ...base,
+      trajectory: raceTrajectory({
+        raceKm: 21.0975,
+        weeksToRace: 12,
+        currentWeeklyKm: 9,
+        currentLongestRunKm: 5,
+      }),
+    });
+    expect(html).toContain("Out of reach");
+    expect(html).toContain("has to move");
   });
 });

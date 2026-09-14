@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWeekTemplate, type WeekTemplateInput } from "./weekTemplate.js";
+import { buildWeekTemplate, plannedRunVolumeCeiling, type WeekTemplateInput } from "./weekTemplate.js";
 import { validateWeek, type PlannedSession } from "./validator.js";
 import type { Limiter } from "./limiter.js";
 
@@ -244,6 +244,108 @@ describe("buildWeekTemplate — behavior", () => {
     expect(plan.explanation).toContain("81 days since the last run");
     expect(plan.explanation).toContain("Previous-week decision: REPEAT");
     expect(plan.explanation).toContain("Gym work is shown on 2");
+  });
+});
+
+describe("buildWeekTemplate — the long run is the longest run", () => {
+  // Regression: a flat 30% long-run share on a 3-day week (even split 33%) made the
+  // KEY session the SHORTEST run — a 2.6km "long run" beside two 3.1km easy runs.
+  it("keeps the key session longer than every easy run at 3 run days", () => {
+    const plan = buildWeekTemplate(
+      baseInput({ limiter: "long_endurance", previousWeekKm: 8.9, longestRunKm30d: 5.61, runDays: [1, 3, 6] }),
+    );
+    const easy = plan.support_sessions.filter((s) => s.planned_km > 0);
+    expect(easy.length).toBe(2);
+    for (const s of easy) expect(plan.key_session.planned_km).toBeGreaterThan(s.planned_km);
+  });
+
+  it("keeps the key session longest at 4 and 5 run days too", () => {
+    for (const runDays of [[0, 2, 4, 6], [0, 1, 3, 4, 6]]) {
+      const plan = buildWeekTemplate(
+        baseInput({ limiter: "aerobic_base", previousWeekKm: 40, longestRunKm30d: 20, runDays }),
+      );
+      for (const s of plan.support_sessions.filter((s) => s.planned_km > 0)) {
+        expect(plan.key_session.planned_km).toBeGreaterThan(s.planned_km);
+      }
+    }
+  });
+
+  it("still respects the +10% session cap over the longest recent run", () => {
+    const plan = buildWeekTemplate(
+      baseInput({ limiter: "long_endurance", previousWeekKm: 40, longestRunKm30d: 5, runDays: [1, 3, 6] }),
+    );
+    expect(plan.key_session.planned_km).toBeLessThanOrEqual(5 * 1.1);
+  });
+});
+
+describe("plannedRunVolumeCeiling — recovers ground already proven", () => {
+  const ceiling = (over: Partial<WeekTemplateInput>) =>
+    plannedRunVolumeCeiling(baseInput({ tsb: 0, previousDecision: "REPEAT", ...over }));
+
+  // Regression: anchoring only on last week made the plan a FOLLOWER — one interrupted
+  // week reset the baseline for good and the prescription sank below what the athlete
+  // was already running unprompted.
+  it("does not sink to a single interrupted week when recent weeks were bigger", () => {
+    expect(ceiling({ previousWeekKm: 8.9, recentWeeklyKm: [14.4, 5, 4.1, 8.9] })).toBeCloseTo(11.5, 1);
+  });
+
+  it("never drops below last week when last week was the best week", () => {
+    expect(ceiling({ previousWeekKm: 20, recentWeeklyKm: [5, 8, 12, 20] })).toBeCloseTo(20, 1);
+  });
+
+  it("ignores a peak older than the lookback window", () => {
+    expect(ceiling({ previousWeekKm: 8, recentWeeklyKm: [60, 8, 8, 8, 8] })).toBeCloseTo(8, 1);
+  });
+
+  it("still lets DELOAD and the fatigue guardrail cut volume", () => {
+    expect(ceiling({ previousWeekKm: 20, recentWeeklyKm: [20, 20], previousDecision: "DELOAD" })).toBeCloseTo(16, 1);
+    expect(ceiling({ previousWeekKm: 20, recentWeeklyKm: [20, 20], tsb: -25 })).toBeCloseTo(18, 1);
+  });
+
+  it("never looks backwards for volume during a taper", () => {
+    expect(
+      ceiling({ trainingPhase: "taper", previousWeekKm: 20, recentWeeklyKm: [50, 40, 30, 20] }),
+    ).toBeCloseTo(15, 1);
+  });
+
+  it("is unchanged when no recent-week history is supplied", () => {
+    expect(ceiling({ previousWeekKm: 20, recentWeeklyKm: undefined })).toBeCloseTo(20, 1);
+  });
+});
+
+describe("plannedRunVolumeCeiling — the trajectory shapes growth but never creates it", () => {
+  const ceiling = (over: Partial<WeekTemplateInput>) =>
+    plannedRunVolumeCeiling(baseInput({ tsb: 0, previousWeekKm: 20, recentWeeklyKm: [20], ...over }));
+
+  it("ignores the trajectory when readiness has not earned progression", () => {
+    for (const previousDecision of ["REPEAT", "PROCEED", null] as const) {
+      expect(ceiling({ previousDecision, trajectoryTargetKm: 40 })).toBeCloseTo(20, 1);
+    }
+  });
+
+  it("lifts an earned week toward the trajectory target", () => {
+    const earned = ceiling({ previousDecision: "PROGRESS", trajectoryTargetKm: 21.8 });
+    expect(earned).toBeCloseTo(21.8, 1);
+    expect(earned).toBeGreaterThan(ceiling({ previousDecision: "PROGRESS", trajectoryTargetKm: null }));
+  });
+
+  it("never lets the trajectory push past the +10% safety ceiling", () => {
+    expect(ceiling({ previousDecision: "PROGRESS", trajectoryTargetKm: 500 })).toBeCloseTo(22, 1);
+  });
+
+  it("never lets the trajectory pull an earned week backwards", () => {
+    expect(ceiling({ previousDecision: "PROGRESS", trajectoryTargetKm: 5 })).toBeCloseTo(21, 1);
+  });
+
+  it("does not let the trajectory undo a deload or a fatigue cut", () => {
+    expect(ceiling({ previousDecision: "DELOAD", trajectoryTargetKm: 40 })).toBeCloseTo(16, 1);
+    expect(ceiling({ previousDecision: "PROGRESS", tsb: -25, trajectoryTargetKm: 40 })).toBeCloseTo(18, 1);
+  });
+
+  it("never chases the trajectory during a taper", () => {
+    expect(
+      ceiling({ trainingPhase: "taper", previousDecision: "PROGRESS", trajectoryTargetKm: 40 }),
+    ).toBeCloseTo(15, 1);
   });
 });
 

@@ -122,8 +122,8 @@ replaces it. Combined with the review reading `plan_week` a week later, the
 prescription being audited can differ from the one that was shown. Already listed in
 NEXT_STEPS P0 ("immutable plan revisions") — this review just confirms it's not
 theoretical: the refresh button makes multi-generation of the same week routine.
-Fix direction is in `docs/p0-checkin-implementation.md` §9 (out of scope there;
-schedule it).
+Still open after the check-in shipped (2026-09-07): P0 deliberately left immutable
+plan revisions out of scope. Tracked in NEXT_STEPS P0.
 
 ### M3 — Weekday wraparound blind spot: Sunday lower-body vs Monday key · MEDIUM-LOW
 
