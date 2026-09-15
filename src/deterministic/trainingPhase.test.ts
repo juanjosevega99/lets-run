@@ -104,3 +104,79 @@ describe("four-day spacing (red-team M1)", () => {
     }
   });
 });
+
+describe("phaseRunDays — anchors on the athlete's own week", () => {
+  // Five weeks running, the plan said Tue/Thu/Sun while Juan ran Mon/Wed/Sun.
+  it("schedules the days actually used instead of the template", () => {
+    expect(phaseRunDays("base", [], true, 9, [0, 6, 2])).toEqual([0, 2, 6]);
+  });
+
+  it("falls back to the template when the pattern is unknown", () => {
+    expect(phaseRunDays("base", [], true, 9, [])).toEqual([1, 3, 6]);
+  });
+
+  it("tops up from the template when fewer days are habitual than the phase asks", () => {
+    const days = phaseRunDays("base", [], true, 9, [6]);
+    expect(days).toHaveLength(3);
+    expect(days).toContain(6);
+  });
+
+  it("keeps the strongest habits when more weekdays are supplied than needed", () => {
+    // Ranked most-used first: Mon, Sun, Wed are kept; Tue and Sat are dropped.
+    expect(phaseRunDays("base", [], true, 9, [0, 6, 2, 1, 5])).toEqual([0, 2, 6]);
+  });
+
+  it("never lets a preference put the key run next to a lower-body day", () => {
+    // Sunday is preferred and keys the week, but Saturday is legs day.
+    const days = phaseRunDays("base", [5], true, 9, [0, 6, 2]);
+    expect(lowerBodyConflictsWithKey(keyRunDay(days, true), [5])).toBe(false);
+  });
+
+  it("never lets a preference create consecutive run days in a 3-day week", () => {
+    const days = phaseRunDays("base", [], true, 9, [0, 1, 2]);
+    for (let i = 1; i < days.length; i++) expect(days[i]! - days[i - 1]!).toBeGreaterThan(1);
+  });
+
+  it("still returns the phase's run-day count, not the preference's length", () => {
+    expect(phaseRunDays("base", [], true, 20, [0, 6])).toHaveLength(4);
+    expect(phaseRunDays("return_to_run", [], true, 20, [0, 1, 2, 3, 4])).toHaveLength(3);
+  });
+});
+
+describe("phaseRunDays — anchors on the athlete's own week", () => {
+  // Five weeks running, the plan said Tue/Thu/Sun while Juan ran Mon/Wed/Sun.
+  it("schedules the days actually used instead of the template", () => {
+    expect(phaseRunDays("base", [], true, 9, [0, 6, 2])).toEqual([0, 2, 6]);
+  });
+
+  it("falls back to the template when the pattern is unknown", () => {
+    expect(phaseRunDays("base", [], true, 9, [])).toEqual([1, 3, 6]);
+  });
+
+  it("tops up from the template when fewer days are habitual than the phase asks", () => {
+    const days = phaseRunDays("base", [], true, 9, [6]);
+    expect(days).toHaveLength(3);
+    expect(days).toContain(6);
+  });
+
+  it("keeps the strongest habits when more weekdays are supplied than needed", () => {
+    // Ranked most-used first: Mon, Sun, Wed kept; Tue and Sat dropped.
+    expect(phaseRunDays("base", [], true, 9, [0, 6, 2, 1, 5])).toEqual([0, 2, 6]);
+  });
+
+  it("never lets a preference put the key run next to a lower-body day", () => {
+    const days = phaseRunDays("base", [5], true, 9, [0, 6, 2]);
+    expect(lowerBodyConflictsWithKey(keyRunDay(days, true), [5])).toBe(false);
+  });
+
+  it("never lets a preference create consecutive run days in a 3-day week", () => {
+    const days = phaseRunDays("base", [], true, 9, [0, 1, 2]);
+    for (let i = 1; i < days.length; i++) expect(days[i]! - days[i - 1]!).toBeGreaterThan(1);
+  });
+
+  it("still returns the phase's run-day count, not the preference's length", () => {
+    expect(phaseRunDays("base", [], true, 20, [0, 6])).toHaveLength(4);
+    expect(phaseRunDays("return_to_run", [], true, 20, [0, 1, 2, 3, 4])).toHaveLength(3);
+  });
+});
+

@@ -42,6 +42,7 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
       ctx.lowerBodyStrengthDays,
       isAllEasyWeek(ctx.trainingPhase, ctx.limiter.limiter),
       ctx.runs28d,
+      ctx.preferredRunDays,
     ),
     strengthDays: ctx.strengthDays,
     lowerBodyStrengthDays: ctx.lowerBodyStrengthDays,

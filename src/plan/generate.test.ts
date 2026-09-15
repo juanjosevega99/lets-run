@@ -30,6 +30,7 @@ const ctx: PlanContext = {
   qualityShare28d: 0,
   strengthDays: [0, 2, 4],
   lowerBodyStrengthDays: [2, 4],
+  preferredRunDays: [],
   previousDecision: null,
   paces: { easySecPerKm: 360, thresholdSecPerKm: 252 },
   paceSource: "observed",

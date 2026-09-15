@@ -40,6 +40,8 @@ export interface PlanContext {
   qualityShare28d: number | null;
   strengthDays: number[];
   lowerBodyStrengthDays: number[];
+  /** Habitual run weekdays, most-used first; empty when unknown. */
+  preferredRunDays: number[];
   previousDecision: WeekDecision | null;
   paces: { easySecPerKm: number; thresholdSecPerKm: number | null } | null;
   /**

@@ -132,6 +132,30 @@ describe("reviewWeek", () => {
     expect(result.completedRunSessions).toBe(2); // the 4.2km still covers the easy day
   });
 
+  it("counts every run of an all-easy week, whatever day each landed on", () => {
+    // Juan's week of 2026-09-07: planned Tue/Thu/Sun, run Mon/Wed/Sun. All three were
+    // done; date-matching the support runs scored it 2 of 3.
+    const k: PlannedSession = { day: 6, title: "Long run", intensity: "low", plannedKm: 4.6 };
+    const week: PlannedSession[] = [
+      { day: 1, title: "Easy run", intensity: "low", plannedKm: 3.4 },
+      { day: 3, title: "Easy run", intensity: "low", plannedKm: 3.4 },
+      k,
+    ];
+    const result = reviewWeek({
+      sessions: week,
+      keySession: k,
+      actualRuns: [
+        { day: 0, distanceKm: 4.13 },
+        { day: 2, distanceKm: 4.56 },
+        { day: 6, distanceKm: 5.8 },
+      ],
+      keyMatchesAnyDay: true,
+    });
+    expect(result.keyCompleted).toBe(true);
+    expect(result.completedRunSessions).toBe(3);
+    expect(result.compliancePct).toBe(100);
+  });
+
   it("keeps the strict window for a week with real intensity structure", () => {
     const hardKey: PlannedSession = { day: 6, title: "Threshold", intensity: "high", plannedKm: 8 };
     const structured: PlannedSession[] = [

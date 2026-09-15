@@ -349,6 +349,52 @@ describe("plannedRunVolumeCeiling — the trajectory shapes growth but never cre
   });
 });
 
+describe("buildWeekTemplate — return-to-run copy matches what the athlete can do", () => {
+  const returning = (over: Partial<WeekTemplateInput> = {}) =>
+    buildWeekTemplate(
+      baseInput({ trainingPhase: "return_to_run", limiter: "aerobic_base", runDays: [1, 3, 6], ...over }),
+    );
+
+  it("drops the run/walk framing once the distance has been run continuously", () => {
+    // Juan, week of 2026-09-14: 5.8km covered unbroken, so no session asks for more
+    // than he has already demonstrated.
+    const plan = returning({ previousWeekKm: 14.5, longestRunKm30d: 5.8 });
+    const runs = runningSessions(plan);
+    expect(plan.key_session.title).toBe("Longest easy run");
+    expect(runs.every((s) => !s.title.includes("/walk"))).toBe(true);
+    expect(runs.every((s) => !s.description.includes("Walk breaks are allowed"))).toBe(true);
+  });
+
+  it("still offers walk breaks for a session longer than anything run recently", () => {
+    const plan = returning({ previousWeekKm: 14.5, longestRunKm30d: 2 });
+    expect(plan.key_session.title).toBe("Longest easy run/walk");
+    expect(plan.key_session.description).toContain("Walk breaks are allowed");
+  });
+
+  it("offers walk breaks when there is no recent running at all", () => {
+    const plan = returning({ previousWeekKm: null, longestRunKm30d: 0 });
+    expect(runningSessions(plan).every((s) => s.title.includes("/walk"))).toBe(true);
+  });
+
+  it("keeps the stop-if-pain line on every session either way", () => {
+    for (const longestRunKm30d of [0, 5.8]) {
+      const plan = returning({ previousWeekKm: 14.5, longestRunKm30d });
+      expect(
+        runningSessions(plan).every((s) => s.description.toLowerCase().includes("stop if pain changes your stride")),
+      ).toBe(true);
+    }
+  });
+
+  it("changes only the copy — volume and frequency are untouched", () => {
+    const cautious = returning({ previousWeekKm: 14.5, longestRunKm30d: 2 });
+    const confident = returning({ previousWeekKm: 14.5, longestRunKm30d: 2.0001 });
+    expect(runningSessions(confident).map((s) => s.planned_minutes)).toEqual(
+      runningSessions(cautious).map((s) => s.planned_minutes),
+    );
+    expect(totalRunKm(confident)).toBeCloseTo(totalRunKm(cautious), 5);
+  });
+});
+
 describe("buildWeekTemplate — return-to-run and gym calendar", () => {
   it("prescribes exactly 3 nonconsecutive, all-easy runs", () => {
     const plan = buildWeekTemplate(
@@ -356,6 +402,9 @@ describe("buildWeekTemplate — return-to-run and gym calendar", () => {
         trainingPhase: "return_to_run",
         runDays: [1, 3, 6],
         previousWeekKm: null,
+        // A real returner has no recent long run; the inherited default of 20km
+        // contradicted this test's own scenario.
+        longestRunKm30d: 0,
         strengthDays: [0, 4],
         lowerBodyStrengthDays: [0],
       }),

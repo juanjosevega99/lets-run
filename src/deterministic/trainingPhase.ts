@@ -16,12 +16,19 @@ export interface TrainingPhaseInput {
  * has been away for weeks returns to impact gradually even if the race is close.
  * Once continuity exists, the race clock selects the macro phase.
  */
+/** A gap longer than this is a layoff, not a rest week. */
+export const RETURN_MAX_GAP_DAYS = 21;
+/** Runs in the last 28 days before running counts as re-established. */
+export const RETURN_MIN_RUNS_28D = 8;
+/** Of the last 4 completed weeks, how many must contain any running. */
+export const RETURN_MIN_ACTIVE_WEEKS_4 = 3;
+
 export function selectTrainingPhase(x: TrainingPhaseInput): TrainingPhase {
   if (
     x.daysSinceLastRun == null ||
-    x.daysSinceLastRun > 21 ||
-    x.runs28d < 8 ||
-    x.activeRunWeeks4 < 3
+    x.daysSinceLastRun > RETURN_MAX_GAP_DAYS ||
+    x.runs28d < RETURN_MIN_RUNS_28D ||
+    x.activeRunWeeks4 < RETURN_MIN_ACTIVE_WEEKS_4
   ) {
     return "return_to_run";
   }
@@ -45,11 +52,7 @@ export interface TrainingFocusInput extends TrainingPhaseInput {
  */
 export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
   if (x.phase === "return_to_run") {
-    const gap = x.daysSinceLastRun == null ? "no recent run" : `${x.daysSinceLastRun} days since the last run`;
-    return {
-      limiter: "aerobic_base",
-      reason: `${gap}; re-establish three pain-free, conversational run days before adding intensity`,
-    };
+    return { limiter: "aerobic_base", reason: returnToRunReason(x) };
   }
 
   const longRunRatio = x.raceKm > 0 ? x.longestRunKm30d / x.raceKm : 0;
@@ -96,6 +99,25 @@ export function selectTrainingFocus(x: TrainingFocusInput): LimiterResult {
   };
 }
 
+/**
+ * Names the gate that actually selected return-to-run, in the same order
+ * `selectTrainingPhase` tests them. The old copy always quoted the gap, which turned
+ * into a non-sequitur for an athlete who ran yesterday — "0 days since the last run;
+ * re-establish three run days" argues against its own conclusion. Whichever gate is
+ * binding is the one the athlete has to clear, so that is the one worth naming.
+ */
+function returnToRunReason(x: TrainingFocusInput): string {
+  const next = "keep three pain-free, conversational run days before adding intensity";
+  if (x.daysSinceLastRun == null) return `no running on record; ${next}`;
+  if (x.daysSinceLastRun > RETURN_MAX_GAP_DAYS) {
+    return `${x.daysSinceLastRun} days since the last run; ${next}`;
+  }
+  if (x.runs28d < RETURN_MIN_RUNS_28D) {
+    return `${x.runs28d} runs in the last 28 days, ${RETURN_MIN_RUNS_28D} needed to count as re-established; ${next}`;
+  }
+  return `running in only ${x.activeRunWeeks4} of the last 4 weeks, ${RETURN_MIN_ACTIVE_WEEKS_4} needed; ${next}`;
+}
+
 /** Runs-in-28-days a returning athlete needs before the plan steps 3→4 run days. */
 export const RUN_DAY_STEP_UP_RUNS_28D = 12;
 
@@ -122,9 +144,10 @@ export function phaseRunDays(
   lowerBodyStrengthDays: number[] = [],
   allEasy = true,
   runs28d?: number,
+  preferredRunDays: number[] = [],
 ): number[] {
   const count = targetRunDays(phase, runs28d);
-  const defaults = count === 3 ? [1, 3, 6] : [0, 2, 4, 6];
+  const defaults = anchorDays(count, preferredRunDays);
   const lower = new Set(lowerBodyStrengthDays);
   const all = combinations([0, 1, 2, 3, 4, 5, 6], count);
 
@@ -143,6 +166,32 @@ export function phaseRunDays(
   return pool.reduce((best, days) =>
     scheduleScore(days, defaults, lower, allEasy) < scheduleScore(best, defaults, lower, allEasy) ? days : best,
   );
+}
+
+/** Template weekdays, used when the athlete's own pattern is unknown or too thin. */
+const TEMPLATE_RUN_DAYS: Record<number, number[]> = { 3: [1, 3, 6], 4: [0, 2, 4, 6] };
+
+/**
+ * The weekdays `scheduleScore` measures deviation FROM — the week's centre of gravity.
+ *
+ * Day placement is life logistics, not a training variable: which day an easy run lands
+ * on changes nothing physiological, while fighting the athlete's real week costs real
+ * sessions. So when the athlete's own pattern is known it becomes the anchor, and the
+ * template is only a fallback. The hard constraints are unaffected — nonconsecutive
+ * days, lower-body/key spacing and the rest day are enforced by the caller's filters
+ * and the other penalty terms, which this cannot override. Adapt WHERE sessions land,
+ * never WHAT they are.
+ */
+export function anchorDays(count: number, preferred: number[]): number[] {
+  const template = TEMPLATE_RUN_DAYS[count] ?? TEMPLATE_RUN_DAYS[3]!;
+  const picked = [...new Set(preferred)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  if (picked.length === 0) return template;
+  // `preferred` arrives ranked (most-run weekday first), so slicing keeps the strongest
+  // habits; a runner with fewer habitual days than the phase asks for is topped up from
+  // the template rather than having days invented next to the ones they already use.
+  const kept = picked.slice(0, count);
+  const fill = template.filter((d) => !kept.includes(d));
+  return [...kept, ...fill].slice(0, count).sort((a, b) => a - b);
 }
 
 function combinations(values: number[], count: number): number[][] {

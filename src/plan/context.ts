@@ -172,6 +172,7 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
 
   const predictions = await livePredictions(sql);
   const strengthDays = await loadStrengthDays(sql);
+  const preferredRunDays = await loadRunDays(sql);
   const lowerBodyStrengthDays = parseDayList(process.env.ATHLETE_LOWER_BODY_DAYS);
   const previousDecision = await latestWeekDecision(sql);
 
@@ -200,6 +201,7 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
     qualityShare28d,
     strengthDays,
     lowerBodyStrengthDays,
+    preferredRunDays,
     previousDecision,
     paces,
     paceSource,
@@ -244,6 +246,36 @@ async function recentThresholdTimeShare(sql: Sql, thresholdHr: number): Promise<
     }
   }
   return measuredS > 0 ? thresholdS / measuredS : null;
+}
+
+/** Runs needed in the window before a weekday pattern is signal rather than noise. */
+const MIN_RUNS_TO_INFER_DAYS = 6;
+const RUN_DAY_INFERENCE_WINDOW_DAYS = 90;
+
+/**
+ * The athlete's habitual run weekdays, most-used first — the run-side twin of
+ * `loadStrengthDays`. Explicit config wins; otherwise infer; otherwise return nothing
+ * and let the template decide (same precedence as the gym).
+ *
+ * Ties break on the most RECENT run for that weekday, so a habit that is currently
+ * active outranks one of equal count that has gone quiet.
+ */
+async function loadRunDays(sql: Sql): Promise<number[]> {
+  const configured = parseDayList(process.env.ATHLETE_RUN_DAYS);
+  if (configured.length > 0) return configured;
+  const rows = await sql<{ day: number; sessions: number }[]>`
+    select (extract(isodow from start_date at time zone ${dashboardTz()})::int - 1) as day,
+           count(*)::int as sessions
+    from activities
+    where sport_type ilike '%run%'
+      and start_date >= now() - make_interval(days => ${RUN_DAY_INFERENCE_WINDOW_DAYS})
+    group by 1
+    order by count(*) desc, max(start_date) desc
+  `;
+  const total = rows.reduce((sum, r) => sum + r.sessions, 0);
+  // Too few runs and the "pattern" is just where the last handful happened to land.
+  if (total < MIN_RUNS_TO_INFER_DAYS) return [];
+  return rows.map((r) => r.day);
 }
 
 async function loadStrengthDays(sql: Sql): Promise<number[]> {

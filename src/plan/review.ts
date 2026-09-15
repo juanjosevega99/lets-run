@@ -29,10 +29,12 @@ export interface WeekReviewInput {
   /** Must be explicit; missing subjective data cannot earn progression. */
   readinessConfirmed?: boolean;
   /**
-   * Credit the key session from any day of the week instead of within +/-1 day. True
-   * for an all-easy week, where the "key session" is simply the week's longest easy
-   * run and its calendar slot carries no physiological meaning. Weeks with a real
-   * intensity structure keep the strict window — there, placement IS the prescription.
+   * Credit run sessions from any day of the week instead of within +/-1 day. True for
+   * an all-easy week, where the sessions are interchangeable easy runs and the key is
+   * simply the longest of them — no calendar slot carries physiological meaning. Weeks
+   * with a real intensity structure keep the strict window: there, placement IS the
+   * prescription (a threshold session three days from its recovery run is a different
+   * week). Named for the key because that is where it matters most.
    */
   keyMatchesAnyDay?: boolean;
 }
@@ -91,8 +93,12 @@ export function reviewWeek(x: WeekReviewInput): WeekReviewResult {
     unmatched.splice(best, 1);
     return true;
   };
-  const keyCompleted = match(x.keySession, x.keyMatchesAnyDay === true);
-  const completed = plannedRuns.filter((s) => s !== x.keySession && match(s));
+  const anyDay = x.keyMatchesAnyDay === true;
+  const keyCompleted = match(x.keySession, anyDay);
+  // Support runs in an all-easy week are interchangeable too. Matching them by date
+  // undercounted real work: three runs against a three-run week scored 2/3 purely
+  // because one landed on Monday instead of Thursday.
+  const completed = plannedRuns.filter((s) => s !== x.keySession && match(s, anyDay));
   if (plannedRuns.includes(x.keySession) && keyCompleted) completed.push(x.keySession);
   // Extra running is load, not extra credit. It must not manufacture >100% compliance.
   const compliancePct =

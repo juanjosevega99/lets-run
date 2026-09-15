@@ -187,13 +187,33 @@ function returnToRunWeek(
   }
 
   const effort = easyEffort(x);
+  /**
+   * Walk breaks are offered only for a session LONGER than anything covered recently.
+   * Telling an athlete who just ran 5.8km unbroken that "walk breaks are allowed"
+   * describes a body he no longer has, and reads as a demotion for a week he earned.
+   * The caution of return-to-run belongs in the volume and the frequency — which are
+   * unchanged here — not in copy that contradicts what the athlete just did. The
+   * stop-if-pain clause is a safety line and stays on every session either way.
+   */
   const makeEasy = (day: number, isKey: boolean): TemplateSession => {
     const km = kmByDay.get(day) ?? 0;
     const minutes = minutesByDay.get(day) ?? 20;
+    const offerWalkBreaks = x.longestRunKm30d <= 0 || km > x.longestRunKm30d;
+    const title = offerWalkBreaks
+      ? isKey
+        ? "Longest easy run/walk"
+        : "Easy run/walk"
+      : isKey
+        ? "Longest easy run"
+        : "Easy run";
     return {
       day,
-      title: isKey ? "Longest easy run/walk" : "Easy run/walk",
-      description: `${minutes} minutes easy run/walk (about ${km.toFixed(1)}km) — ${effort} Walk breaks are allowed; stop if pain changes your stride.`,
+      title,
+      description:
+        `${minutes} minutes easy${offerWalkBreaks ? " run/walk" : ""} (about ${km.toFixed(1)}km) — ${effort} ` +
+        (offerWalkBreaks
+          ? "Walk breaks are allowed; stop if pain changes your stride."
+          : "Stop if pain changes your stride."),
       intensity: "low",
       planned_km: km,
       planned_minutes: minutes,
