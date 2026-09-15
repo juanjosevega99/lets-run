@@ -180,3 +180,37 @@ describe("phaseRunDays — anchors on the athlete's own week", () => {
   });
 });
 
+describe("phaseRunDays — habit is rank-weighted, not a positional anchor", () => {
+  // Regression: the top-N habitual weekdays were used as a positional anchor. Three
+  // ADJACENT habitual days can never form a legal three-day week, so the anchor was
+  // unreachable and the scheduler drifted to days matching neither habit nor template.
+  it("finds a legal subset when the most-run days are adjacent", () => {
+    const days = phaseRunDays("base", [], true, 9, [1, 3, 2, 6, 5]); // Tue,Thu,Wed,Sun,Sat
+    for (let i = 1; i < days.length; i++) expect(days[i]! - days[i - 1]!).toBeGreaterThan(1);
+    for (const d of days) expect([1, 2, 3, 5, 6]).toContain(d);
+  });
+
+  it("handles an adjacent pair at the end of the week", () => {
+    const days = phaseRunDays("base", [], true, 9, [6, 1, 5, 3]); // Sun,Tue,Sat,Thu
+    for (let i = 1; i < days.length; i++) expect(days[i]! - days[i - 1]!).toBeGreaterThan(1);
+  });
+
+  // A flat "has he ever run this weekday?" test is useless for anyone who has touched
+  // most weekdays: every week scores equally and the template silently wins.
+  it("prefers frequent days over days run only once", () => {
+    // Ranked: Mon, Sun, Wed most-run; Tue and Thu trail.
+    expect(phaseRunDays("base", [], true, 9, [0, 6, 2, 1, 3, 5])).toEqual([0, 2, 6]);
+  });
+
+  it("still lets spacing win a close call", () => {
+    // Habit ranks Mon/Tue/Wed/Fri; a back-to-back pair must not be bought with habit.
+    const days = phaseRunDays("base", [], true, 9, [0, 1, 2, 4]);
+    for (let i = 1; i < days.length; i++) expect(days[i]! - days[i - 1]!).toBeGreaterThan(1);
+  });
+
+  it("never schedules a day the athlete never runs when a habitual one is legal", () => {
+    const days = phaseRunDays("base", [], true, 9, [0, 2, 4]);
+    expect(days).toEqual([0, 2, 4]);
+  });
+});
+

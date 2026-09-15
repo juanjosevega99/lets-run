@@ -23,7 +23,8 @@
     "predict": "tsx src/predict/cli.ts",
     "plan": "tsx src/plan/cli.ts",
     "tomorrow": "tsx src/plan/tomorrow.ts",
-    "plan:free": "tsx src/plan/freeCli.ts"
+    "plan:free": "tsx src/plan/freeCli.ts",
+    "backtest:coach": "tsx src/backtest/coachReplayCli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

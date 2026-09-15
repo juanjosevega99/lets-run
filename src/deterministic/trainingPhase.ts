@@ -147,7 +147,8 @@ export function phaseRunDays(
   preferredRunDays: number[] = [],
 ): number[] {
   const count = targetRunDays(phase, runs28d);
-  const defaults = anchorDays(count, preferredRunDays);
+  const defaults = TEMPLATE_RUN_DAYS[count] ?? TEMPLATE_RUN_DAYS[3]!;
+  const habit = habitRanks(preferredRunDays);
   const lower = new Set(lowerBodyStrengthDays);
   const all = combinations([0, 1, 2, 3, 4, 5, 6], count);
 
@@ -164,35 +165,14 @@ export function phaseRunDays(
   const pool = count <= 3 && nonconsecutive.length > 0 ? nonconsecutive : noConflict;
 
   return pool.reduce((best, days) =>
-    scheduleScore(days, defaults, lower, allEasy) < scheduleScore(best, defaults, lower, allEasy) ? days : best,
+    scheduleScore(days, defaults, lower, allEasy, habit) < scheduleScore(best, defaults, lower, allEasy, habit)
+      ? days
+      : best,
   );
 }
 
 /** Template weekdays, used when the athlete's own pattern is unknown or too thin. */
 const TEMPLATE_RUN_DAYS: Record<number, number[]> = { 3: [1, 3, 6], 4: [0, 2, 4, 6] };
-
-/**
- * The weekdays `scheduleScore` measures deviation FROM — the week's centre of gravity.
- *
- * Day placement is life logistics, not a training variable: which day an easy run lands
- * on changes nothing physiological, while fighting the athlete's real week costs real
- * sessions. So when the athlete's own pattern is known it becomes the anchor, and the
- * template is only a fallback. The hard constraints are unaffected — nonconsecutive
- * days, lower-body/key spacing and the rest day are enforced by the caller's filters
- * and the other penalty terms, which this cannot override. Adapt WHERE sessions land,
- * never WHAT they are.
- */
-export function anchorDays(count: number, preferred: number[]): number[] {
-  const template = TEMPLATE_RUN_DAYS[count] ?? TEMPLATE_RUN_DAYS[3]!;
-  const picked = [...new Set(preferred)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-  if (picked.length === 0) return template;
-  // `preferred` arrives ranked (most-run weekday first), so slicing keeps the strongest
-  // habits; a runner with fewer habitual days than the phase asks for is topped up from
-  // the template rather than having days invented next to the ones they already use.
-  const kept = picked.slice(0, count);
-  const fill = template.filter((d) => !kept.includes(d));
-  return [...kept, ...fill].slice(0, count).sort((a, b) => a - b);
-}
 
 function combinations(values: number[], count: number): number[][] {
   const out: number[][] = [];
@@ -207,8 +187,49 @@ function combinations(values: number[], count: number): number[][] {
   return out;
 }
 
-function scheduleScore(days: number[], defaults: number[], lower: Set<number>, allEasy: boolean): number {
+/** Cost of scheduling a run on a weekday the athlete never runs on. */
+const HABIT_MISS_RANK = 8;
+/**
+ * Scales the habit term against the other penalties. At 2, moving one rank down the
+ * athlete's own preference order costs less than creating a back-to-back pair (3), so
+ * spacing still wins a close call — but scheduling a day he never runs (16) never does.
+ */
+const HABIT_WEIGHT = 2;
+
+/**
+ * `preferredRunDays` arrives ranked, most-run weekday first. Rank matters: a flat
+ * "is this a day he has ever run?" test is useless for anyone who has touched most
+ * weekdays at some point — every candidate week scores equally and the template wins
+ * by default, which is the behaviour habit inference existed to replace.
+ */
+function habitRanks(preferred: number[]): Map<number, number> {
+  const ranks = new Map<number, number>();
+  preferred
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+    .forEach((day, rank) => {
+      if (!ranks.has(day)) ranks.set(day, Math.min(rank, HABIT_MISS_RANK - 1));
+    });
+  return ranks;
+}
+
+function scheduleScore(
+  days: number[],
+  defaults: number[],
+  lower: Set<number>,
+  allEasy: boolean,
+  habit: Map<number, number> = new Map(),
+): number {
   const deviation = days.reduce((sum, day, i) => sum + Math.abs(day - defaults[i]!), 0);
+  // Prefer days the athlete actually runs on, as a MEMBERSHIP test rather than by
+  // anchoring on his top-N weekdays. Ranking them positionally produced anchors that
+  // could not form a legal week at all — three adjacent habitual weekdays can never be
+  // a nonconsecutive three-day set — and the scheduler then drifted to days matching
+  // neither the habit nor the template. Scoring membership lets the existing filters
+  // find the best LEGAL subset of the days he already uses.
+  const habitCost =
+    habit.size > 0
+      ? days.reduce((sum, day) => sum + (habit.get(day) ?? HABIT_MISS_RANK), 0)
+      : 0;
   const easyAfterLegs = days.slice(0, -1).filter((day) => day > 0 && lower.has(day - 1)).length;
   // Prefer no back-to-back run days (e.g. [0,2,4,6]), and especially keep the key run
   // out of any back-to-back pair — both soft, so they never block a valid week.
@@ -221,5 +242,5 @@ function scheduleScore(days: number[], defaults: number[], lower: Set<number>, a
       if (days[i] === key || days[i - 1] === key) keyAdjacent = 1;
     }
   }
-  return deviation + easyAfterLegs * 2 + adjacentPairs * 3 + keyAdjacent * 4;
+  return deviation + habitCost * HABIT_WEIGHT + easyAfterLegs * 2 + adjacentPairs * 3 + keyAdjacent * 4;
 }

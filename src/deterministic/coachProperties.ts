@@ -51,8 +51,16 @@ export interface CoachPropertyInput {
   preferredRunDays?: number[];
 }
 
-/** Fraction of a recent peak week a plan may fall below before it is ignorable. */
-const BEHAVIOR_FLOOR_SHARE = 0.8;
+/**
+ * Fraction of a recent peak week a plan may fall below before it is ignorable.
+ *
+ * Deliberately BELOW the controller's own RECENT_PEAK_RECOVERY_SHARE (0.8). A property
+ * is a sanity check, not a second implementation of the controller: setting it equal
+ * made it fire on per-session rounding, flagging an 11.4km plan against an 11.52km
+ * floor. It should catch a plan that has meaningfully abandoned recent behavior, not
+ * one that lost 0.1km to flooring.
+ */
+const BEHAVIOR_FLOOR_SHARE = 0.75;
 /** How much of the week's run days must sit on habitual days once they are known. */
 const MIN_HABIT_OVERLAP = 0.5;
 
