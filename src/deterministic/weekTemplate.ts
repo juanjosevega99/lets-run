@@ -80,6 +80,30 @@ const LONG_RUN_SHARE_BASE = 0.3; // aerobic_base / long_endurance key session
  */
 const LONG_RUN_MIN_RATIO_TO_EVEN = 1.2;
 const LONG_RUN_SHARE_SUPPORT = 0.28; // long run as a support session (threshold/race_specific weeks)
+/**
+ * Cap on ANY single run, as a multiple of the longest run in the last 30 days.
+ *
+ * A 2025 cohort found higher overuse-injury rates when one run exceeded the longest
+ * run of the prior 30 days by more than 10% (bjsm.bmj.com/content/59/17/1203, cited in
+ * NEXT_STEPS.md). That finding is about a single run — ANY of them — but the cap used
+ * to be applied only to the session the template happened to call "key", leaving every
+ * other run unbounded. A returning athlete whose longest run was 2km could be handed
+ * 4km easy days: double the guardrail, on the days it was never checked.
+ */
+const SESSION_GROWTH_CAP = 1.1;
+/** Ceiling for a single run when there is no recent running to measure against. */
+const NO_HISTORY_SESSION_CAP_KM = 4;
+/**
+ * Absolute ceiling on a NON-key day while returning to running, independent of
+ * history: re-entry weeks keep their easy days short even for someone whose recent
+ * long run would permit more.
+ */
+const RETURN_EASY_SESSION_CAP_KM = 4;
+
+/** The +10% guardrail, in km — applies to every run in the week. */
+function sessionCapKm(longestRunKm30d: number): number {
+  return longestRunKm30d > 0 ? longestRunKm30d * SESSION_GROWTH_CAP : NO_HISTORY_SESSION_CAP_KM;
+}
 export const RUNNING_LOAD_GUARDRAIL = -20;
 
 export function buildWeekTemplate(x: WeekTemplateInput): WeekTemplate {
@@ -124,10 +148,10 @@ function allEasyWeek(
   const keyDay = keyRunDay(x.runDays, true);
   const easyDays = x.runDays.filter((d) => d !== keyDay);
   const rawKey = totalKm * longRunShare(x.runDays.length);
-  const sessionCap = x.longestRunKm30d > 0 ? x.longestRunKm30d * 1.1 : 4;
+  const sessionCap = sessionCapKm(x.longestRunKm30d);
   const rawEasy = easyDays.length > 0 ? (totalKm - rawKey) / easyDays.length : 0;
   const keyKm = floor1(Math.min(rawKey, sessionCap));
-  const eachEasyKm = floor1(rawEasy);
+  const eachEasyKm = floor1(Math.min(rawEasy, sessionCap));
   const effort = easyEffort(x);
   const keyTitle =
     x.limiter === "long_endurance" ? "Long run (building toward race distance)" : "Long run";
@@ -172,7 +196,11 @@ function returnToRunWeek(
   for (let i = 0; i < runDays.length; i++) {
     const day = runDays[i]!;
     const ratio = ratios[i] ?? 1 / runDays.length;
-    const sessionCap = day === keyDay && x.longestRunKm30d > 0 ? x.longestRunKm30d * 1.1 : 4;
+    // The easy days keep their short absolute ceiling, but can never sit ABOVE the
+    // guardrail — which is what inverted the week, handing a 2km-longest athlete 4km
+    // easy runs beside a 2.2km "longest" run.
+    const guardrail = sessionCapKm(x.longestRunKm30d);
+    const sessionCap = day === keyDay ? guardrail : Math.min(RETURN_EASY_SESSION_CAP_KM, guardrail);
     const km = floor1(Math.min(totalKm * ratio, sessionCap));
     kmByDay.set(day, km);
     const baseMinutes = minutesBase[i] ?? Math.round(75 / runDays.length);
@@ -238,9 +266,10 @@ function oneHighDayWeek(
   const rawHigh = totalKm * HIGH_SESSION_SHARE;
   const rawLong = totalKm * LONG_RUN_SHARE_SUPPORT;
   const rawEasy = easyDays.length > 0 ? (totalKm - rawHigh - rawLong) / easyDays.length : 0;
-  const highKm = floor1(rawHigh);
-  const longKm = floor1(rawLong);
-  const eachEasyKm = floor1(rawEasy);
+  const sessionCap = sessionCapKm(x.longestRunKm30d);
+  const highKm = floor1(Math.min(rawHigh, sessionCap));
+  const longKm = floor1(Math.min(rawLong, sessionCap));
+  const eachEasyKm = floor1(Math.min(rawEasy, sessionCap));
   const effort = easyEffort(x);
   const thresholdPace = paceSuffix(x.thresholdPaceSecPerKm);
 

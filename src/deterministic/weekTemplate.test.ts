@@ -247,6 +247,80 @@ describe("buildWeekTemplate — behavior", () => {
   });
 });
 
+describe("buildWeekTemplate — the +10% session guardrail binds EVERY run", () => {
+  // The guardrail used to protect only the session the template called "key", so the
+  // other runs were unbounded: a returning athlete whose longest run was 2km got 4km
+  // easy days, double the guardrail, beside a 2.2km "longest" run.
+  const capFor = (longestRunKm30d: number) => (longestRunKm30d > 0 ? longestRunKm30d * 1.1 : 4);
+
+  const shapes: [string, Partial<WeekTemplateInput>][] = [
+    ["return-to-run", { trainingPhase: "return_to_run", limiter: "aerobic_base", runDays: [1, 3, 6] }],
+    ["all-easy base", { trainingPhase: "base", limiter: "long_endurance", runDays: [1, 3, 6] }],
+    ["quality week", { trainingPhase: "build", limiter: "threshold", runDays: [0, 2, 4, 6] }],
+  ];
+
+  for (const [label, shape] of shapes) {
+    for (const longestRunKm30d of [0, 1.5, 2, 3, 5.8, 20]) {
+      it(`${label}: no run exceeds the guardrail at longest=${longestRunKm30d}km`, () => {
+        const plan = buildWeekTemplate(
+          baseInput({ ...shape, previousWeekKm: 20, recentWeeklyKm: [20], longestRunKm30d }),
+        );
+        for (const s of runningSessions(plan)) {
+          expect(s.planned_km).toBeLessThanOrEqual(capFor(longestRunKm30d) + 1e-9);
+        }
+      });
+    }
+  }
+
+  it("no longer inverts the week when the longest recent run is short", () => {
+    for (const longestRunKm30d of [1.5, 2, 3]) {
+      const plan = buildWeekTemplate(
+        baseInput({
+          trainingPhase: "return_to_run",
+          limiter: "aerobic_base",
+          runDays: [1, 3, 6],
+          previousWeekKm: 20,
+          recentWeeklyKm: [20],
+          longestRunKm30d,
+        }),
+      );
+      for (const s of runningSessions(plan)) {
+        expect(plan.key_session.planned_km).toBeGreaterThanOrEqual(s.planned_km - 1e-9);
+      }
+    }
+  });
+
+  it("leaves a week that was already inside the guardrail untouched", () => {
+    // Juan, week of 2026-09-14.
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        limiter: "aerobic_base",
+        runDays: [0, 2, 6],
+        previousWeekKm: 14.5,
+        recentWeeklyKm: [14.5],
+        longestRunKm30d: 5.8,
+      }),
+    );
+    expect(runningSessions(plan).sort((a, b) => a.day - b.day).map((s) => s.planned_km)).toEqual([3.9, 4, 5.8]);
+  });
+
+  it("keeps easy days short while returning, even for a long recent long run", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        limiter: "aerobic_base",
+        runDays: [1, 3, 6],
+        previousWeekKm: 40,
+        recentWeeklyKm: [40],
+        longestRunKm30d: 20,
+      }),
+    );
+    const easy = runningSessions(plan).filter((s) => s.title !== plan.key_session.title);
+    for (const s of easy) expect(s.planned_km).toBeLessThanOrEqual(4);
+  });
+});
+
 describe("buildWeekTemplate — the long run is the longest run", () => {
   // Regression: a flat 30% long-run share on a 3-day week (even split 33%) made the
   // KEY session the SHORTEST run — a 2.6km "long run" beside two 3.1km easy runs.
