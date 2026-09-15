@@ -273,6 +273,12 @@ export function layout(title: string, activePath: string, body: string): string 
   .logged-list { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); }
   .logged-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: .9rem 1rem; border-bottom: 1px solid var(--line); }
   .logged-row:last-child { border-bottom: 0; }
+  .checkin-prompt { display: grid; gap: .8rem; padding: 1.1rem 1.2rem; margin: 1.4rem 0; border: 1px solid var(--line); border-radius: var(--radius); }
+  .checkin-prompt-copy p { margin: .3rem 0 0; }
+  .checkin-prompt-form { margin: 0; }
+  .checkin-prompt-button { font: inherit; font-weight: 800; padding: .7rem 1.1rem; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; cursor: pointer; }
+  .checkin-prompt-button:hover { border-color: var(--muted-strong); }
+  .checkin-prompt .sub { margin: 0; }
   .checkin-list { display: grid; gap: .75rem; }
   .checkin-row { border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; background: var(--surface); }
   .checkin-row--done { opacity: .82; }

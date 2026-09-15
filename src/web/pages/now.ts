@@ -2,7 +2,8 @@ import { esc } from "../html.js";
 import { dateInTimeZone, formatDuration, formatPace } from "../../lib/time.js";
 import { RACE } from "../../lib/race.js";
 import { estimateInjuryRisk } from "../../deterministic/injuryRisk.js";
-import type { FitnessRow, PlanRow, PredictionRow, RaceRow, RecentSnapshot } from "../queries.js";
+import type { CheckinActivity, FitnessRow, PlanRow, PredictionRow, RaceRow, RecentSnapshot } from "../queries.js";
+import { pendingRunCheckins, renderCheckinPrompt } from "./checkin.js";
 
 export interface NowData {
   daysToRace: number;
@@ -12,6 +13,7 @@ export interface NowData {
   latestActivityDate: Date | null;
   races: RaceRow[];
   plan: PlanRow | null;
+  checkin: CheckinActivity[];
   now: Date;
   tz: string;
 }
@@ -59,6 +61,8 @@ export function renderNow(d: NowData): string {
       </div>
     </aside>
   </section>
+
+  ${renderCheckinPrompt(pendingRunCheckins(d.checkin), "/")}
 
   <section aria-labelledby="next-heading">
     <div class="section-heading">

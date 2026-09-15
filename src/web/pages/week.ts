@@ -2,6 +2,7 @@ import { esc } from "../html.js";
 import { formatDuration, formatPace } from "../../lib/time.js";
 import type { CheckinActivity, LoggedActivity, PlanRow, PlanSessionRow } from "../queries.js";
 import type { SessionFeedback } from "../../plan/feedback.js";
+import { pendingRunCheckins, renderCheckinPrompt } from "./checkin.js";
 
 export interface WeekData {
   activities: LoggedActivity[];
@@ -38,6 +39,7 @@ export function renderWeek(d: WeekData): string {
 
   <section class="section-block" aria-labelledby="checkin-heading">
     <div class="section-heading"><div><p class="eyebrow">Check-in</p><h2 id="checkin-heading">How did it feel?</h2></div><p class="section-copy">Only pain-free check-ins unlock a bigger week. Missing feedback holds the plan steady, and a pain report reduces it. Twenty seconds each.</p></div>
+    ${renderCheckinPrompt(pendingRunCheckins(d.checkin), "/week")}
     ${renderCheckin(d.checkin, d.tz)}
   </section>
 

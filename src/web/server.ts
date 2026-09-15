@@ -24,7 +24,7 @@ import {
 } from "./queries.js";
 import { currentWeekIsComplete, reviewCutoffForReplan } from "../plan/context.js";
 import { raceTrajectory } from "../deterministic/trajectory.js";
-import { parseFeedbackForm } from "../plan/feedback.js";
+import { parseFeedbackForms } from "../plan/feedback.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
@@ -97,17 +97,27 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
         res.end("body too large");
         return;
       }
-      const parsed = parseFeedbackForm(new URLSearchParams(raw));
+      const parsed = parseFeedbackForms(new URLSearchParams(raw));
       if (typeof parsed === "string") {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end(parsed);
         return;
       }
+      // One statement for the whole submission so a batch is all-or-nothing: a partial
+      // week of check-ins would read as "some runs unreported", which the readiness
+      // policy treats as not-green — a confusing state to land in from one tap.
       await sql`
-        insert into session_feedback (activity_id, rpe, pain_during, morning_soreness,
-                                      gym_focus, lower_body_difficulty, notes)
-        values (${parsed.activityId}, ${parsed.rpe}, ${parsed.painDuring}, ${parsed.morningSoreness},
-                ${parsed.gymFocus}, ${parsed.lowerBodyDifficulty}, ${parsed.notes})
+        insert into session_feedback ${sql(
+          parsed.map((f) => ({
+            activity_id: f.activityId,
+            rpe: f.rpe,
+            pain_during: f.painDuring,
+            morning_soreness: f.morningSoreness,
+            gym_focus: f.gymFocus,
+            lower_body_difficulty: f.lowerBodyDifficulty,
+            notes: f.notes,
+          })),
+        )}
         on conflict (activity_id) do update set
           rpe = excluded.rpe,
           pain_during = excluded.pain_during,
@@ -119,7 +129,8 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
       `;
       // Post/Redirect/Get: the dashboard is server-rendered, so a reload after saving
       // must not resubmit the form.
-      res.writeHead(303, { location: "/week" });
+      const back = new URLSearchParams(raw).get("return_to");
+      res.writeHead(303, { location: back === "/" ? "/" : "/week" });
       res.end();
     } catch (err) {
       if ((err as { code?: string }).code === "23503") {
@@ -170,13 +181,14 @@ async function route(path: string): Promise<string | null> {
   const coachingWeek = reviewCutoffForReplan(now);
   switch (path) {
     case "/": {
-      const [predictions, fitness, snapshot, latest, races, plan] = await Promise.all([
+      const [predictions, fitness, snapshot, latest, races, plan, checkin] = await Promise.all([
         livePredictions(sql),
         latestFitness(sql),
         recentSnapshot(sql, 28),
         latestActivityDate(sql),
         allRaces(sql),
         latestPlan(sql, coachingWeek),
+        checkinActivities(sql, 10),
       ]);
       return layout(
         "lets-run · now",
@@ -189,6 +201,7 @@ async function route(path: string): Promise<string | null> {
           latestActivityDate: latest,
           races,
           plan,
+          checkin,
           now,
           tz: dashboardTz(),
         }),

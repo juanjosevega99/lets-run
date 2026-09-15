@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveReadiness, parseFeedbackForm, type SessionFeedback } from "./feedback.js";
+import {
+  MAX_FEEDBACK_BATCH,
+  deriveReadiness,
+  parseFeedbackForm,
+  parseFeedbackForms,
+  type SessionFeedback,
+} from "./feedback.js";
 
 function fb(activityId: number, over: Partial<SessionFeedback> = {}): SessionFeedback {
   return {
@@ -113,3 +119,50 @@ describe("parseFeedbackForm", () => {
     expect(typeof parse(`activity_id=42&notes=${"x".repeat(2001)}`)).toBe("string");
   });
 });
+
+describe("parseFeedbackForms — one tap, several runs", () => {
+  const parse = (q: string) => parseFeedbackForms(new URLSearchParams(q));
+
+  it("applies one clean answer to every run in the batch", () => {
+    const r = parse("activity_ids=1,2,3&pain_during=none&morning_soreness=normal");
+    expect(Array.isArray(r)).toBe(true);
+    const list = r as SessionFeedback[];
+    expect(list.map((f) => f.activityId)).toEqual([1, 2, 3]);
+    expect(list.every((f) => f.painDuring === "none" && f.morningSoreness === "normal")).toBe(true);
+  });
+
+  it("is still an explicit report — a batch confirms readiness, it does not bypass it", () => {
+    const list = parse("activity_ids=1,2,3&pain_during=none&morning_soreness=normal") as SessionFeedback[];
+    expect(deriveReadiness([1, 2, 3], list).readinessConfirmed).toBe(true);
+    // and a batch that does not cover every run still cannot confirm it
+    expect(deriveReadiness([1, 2, 3, 4], list).readinessConfirmed).toBe(false);
+  });
+
+  it("a batch reporting pain still raises the red flag", () => {
+    const list = parse("activity_ids=1,2&pain_during=significant") as SessionFeedback[];
+    expect(deriveReadiness([1, 2], list).redFlag).toBe(true);
+  });
+
+  it("de-duplicates repeated ids", () => {
+    expect((parse("activity_ids=7,7,8") as SessionFeedback[]).map((f) => f.activityId)).toEqual([7, 8]);
+  });
+
+  it("still accepts a single activity_id", () => {
+    expect((parse("activity_id=42&rpe=6") as SessionFeedback[])[0]).toMatchObject({ activityId: 42, rpe: 6 });
+  });
+
+  it("rejects a batch containing any invalid id", () => {
+    expect(typeof parse("activity_ids=1,abc,3")).toBe("string");
+    expect(typeof parse("activity_ids=1,-2")).toBe("string");
+  });
+
+  it("rejects an oversized batch", () => {
+    const ids = Array.from({ length: MAX_FEEDBACK_BATCH + 1 }, (_, i) => i + 1).join(",");
+    expect(typeof parse(`activity_ids=${ids}`)).toBe("string");
+  });
+
+  it("validates the body once for the whole batch", () => {
+    expect(typeof parse("activity_ids=1,2&rpe=99")).toBe("string");
+  });
+});
+

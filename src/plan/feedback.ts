@@ -95,14 +95,49 @@ export function deriveReadiness(
   };
 }
 
+/** Upper bound on a batch submission — a week of training, generously. */
+export const MAX_FEEDBACK_BATCH = 50;
+
 /**
- * Validates the check-in form body (urlencoded fields) into a SessionFeedback.
+ * Activity ids one submission applies to: a single `activity_id`, or a comma-separated
+ * `activity_ids` for the one-tap "no pain on any run this week" path. Batching is only
+ * a shortcut for TYPING; it is still an explicit report by the athlete, so the policy
+ * that missing feedback is never a green signal is untouched.
+ */
+function parseTargetIds(fields: URLSearchParams): number[] | string {
+  const many = (fields.get("activity_ids") ?? "").trim();
+  const raw = many !== "" ? many.split(",") : [fields.get("activity_id") ?? ""];
+  const ids: number[] = [];
+  for (const part of raw) {
+    const id = Number(part.trim());
+    if (!Number.isSafeInteger(id) || id <= 0) return "invalid activity_id";
+    if (!ids.includes(id)) ids.push(id);
+  }
+  if (ids.length === 0) return "invalid activity_id";
+  if (ids.length > MAX_FEEDBACK_BATCH) return `too many activities in one check-in (max ${MAX_FEEDBACK_BATCH})`;
+  return ids;
+}
+
+/**
+ * Validates one check-in submission, which may target several activities at once.
  * Returns a string error rather than throwing — the endpoint turns it into a 400.
  */
-export function parseFeedbackForm(fields: URLSearchParams): SessionFeedback | string {
-  const activityId = Number(fields.get("activity_id"));
-  if (!Number.isSafeInteger(activityId) || activityId <= 0) return "invalid activity_id";
+export function parseFeedbackForms(fields: URLSearchParams): SessionFeedback[] | string {
+  const ids = parseTargetIds(fields);
+  if (typeof ids === "string") return ids;
+  const body = parseFeedbackBody(fields);
+  if (typeof body === "string") return body;
+  return ids.map((activityId) => ({ ...body, activityId }));
+}
 
+/** Single-activity convenience wrapper over `parseFeedbackForms`. */
+export function parseFeedbackForm(fields: URLSearchParams): SessionFeedback | string {
+  const parsed = parseFeedbackForms(fields);
+  return typeof parsed === "string" ? parsed : parsed[0]!;
+}
+
+/** Everything in a check-in except which activity it belongs to. */
+function parseFeedbackBody(fields: URLSearchParams): Omit<SessionFeedback, "activityId"> | string {
   const rpeRaw = (fields.get("rpe") ?? "").trim();
   let rpe: number | null = null;
   if (rpeRaw !== "") {
@@ -128,7 +163,6 @@ export function parseFeedbackForm(fields: URLSearchParams): SessionFeedback | st
   if (notesRaw.length > 2000) return "notes too long";
 
   return {
-    activityId,
     rpe,
     painDuring,
     morningSoreness,

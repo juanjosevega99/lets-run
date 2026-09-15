@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { pendingRunCheckins, renderCheckinPrompt } from "./checkin.js";
+import type { CheckinActivity } from "../queries.js";
 import { raceTrajectory } from "../../deterministic/trajectory.js";
 import { renderNow, type NowData } from "./now.js";
 import { renderWeek } from "./week.js";
@@ -20,6 +22,7 @@ const snapshot: RecentSnapshot = {
 function nowData(overrides: Partial<NowData> = {}): NowData {
   return {
     daysToRace: 280,
+    checkin: [],
     latestPrediction: null,
     fitness: {
       day: "2026-07-19",
@@ -405,3 +408,43 @@ describe("renderTrajectory — required trajectory panel", () => {
     expect(html).toContain("has to move");
   });
 });
+
+describe("renderCheckinPrompt", () => {
+  const run = (id: number): CheckinActivity => ({
+    id,
+    startDate: new Date("2026-09-13T14:00:00Z"),
+    name: "Afternoon Run",
+    sportType: "Run",
+    distanceM: 5800,
+    movingTimeS: 2700,
+    feedback: null,
+  });
+
+  it("renders nothing when every run is already checked in", () => {
+    expect(renderCheckinPrompt(pendingRunCheckins([]), "/")).toBe("");
+    const done = { ...run(1), feedback: { activityId: 1, rpe: 5, painDuring: "none", morningSoreness: "normal", gymFocus: null, lowerBodyDifficulty: null, notes: null } } as CheckinActivity;
+    expect(renderCheckinPrompt(pendingRunCheckins([done]), "/")).toBe("");
+  });
+
+  it("batches every pending run into one submission", () => {
+    const html = renderCheckinPrompt(pendingRunCheckins([run(1), run(2), run(3)]), "/");
+    expect(html).toContain('name="activity_ids" value="1,2,3"');
+    expect(html).toContain('value="none"');
+    expect(html).toContain('value="normal"');
+    expect(html).toContain("No pain on any of those 3 runs");
+    expect(html).toContain('name="return_to" value="/"');
+  });
+
+  it("states a positive fact rather than offering a skip", () => {
+    const html = renderCheckinPrompt(pendingRunCheckins([run(1)]), "/week");
+    expect(html).toContain("No pain on that run");
+    expect(html.toLowerCase()).not.toContain("skip");
+    expect(html.toLowerCase()).not.toContain("dismiss");
+  });
+
+  it("ignores strength sessions — only runs gate readiness", () => {
+    const gym: CheckinActivity = { ...run(9), sportType: "WeightTraining", distanceM: 0 };
+    expect(pendingRunCheckins([gym])).toHaveLength(0);
+  });
+});
+
