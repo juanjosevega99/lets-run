@@ -1,6 +1,6 @@
 # Coach v2 — current state and next steps
 
-Updated 2026-09-07 for the Patagonia Running Festival 21K on 2027-04-24.
+Updated 2026-09-14 for the Patagonia Running Festival 21K on 2027-04-24.
 
 > This is the single source of truth for project continuity and priority. Deep
 > implementation details live in `docs/*.md`; they do not maintain a second roadmap.
@@ -14,15 +14,23 @@ hosted on Vercel and reads Supabase through a server-side Postgres connection. D
 Supabase Data API access is deny-all: every application table has RLS enabled and public
 roles have no grants.
 
-As of 2026-09-07 the athlete has cleared the return-to-run gate (9 runs in 28 days across
-4 active weeks) and the phase is now `base`, limiter `long_endurance` — the longest run in
-30 days is 5.6km, well under 40% of race distance. The race estimate remains paused until
-recent running provides enough evidence for a defensible number. Readiness outranks the
-calendar.
+As of 2026-09-14 the phase is `return_to_run`: 7 runs in the last 28 days against the 8
+the gate requires. It briefly reached `base` a week earlier and fell back as older runs
+aged out of the window — correct, if unintuitive. One strong week is not a base, and the
+gate clears again on its own with three more runs.
 
-The binding constraint is run *frequency*, not run length: those 9 runs cluster (4, 1, 1,
-2, 1 per week), and weekly running time is ~40 min against ~290 min of gym. The plan can
-only work if three runs land every week.
+The week of 2026-09-07 was the **first fully compliant week in the dataset**: 3 runs,
+14.5km, key session completed at 45 min / 5.80km, every run under the 159 bpm easy
+ceiling, and pace allowed to be an output rather than a target. Running CTL 7.31 → 8.91.
+
+The binding constraint remains run *frequency*, not run length. The longest streak of
+consecutive weeks with 3+ runs in the last 78 weeks is **8**, ending September 2025; a
+race build needs roughly 29. 44 of those 78 weeks contained any running at all.
+
+The race estimate is still paused, and only one of four reliability guards is holding it:
+the longest run in 30 days (5.80km) makes a 21.1km estimate a 3.6x extrapolation against
+a 3x limit. It unlocks at a **7.03km** run — three long runs away at the +10% session
+guardrail.
 
 ## First coaching verdict
 
@@ -44,9 +52,35 @@ The correct phase is therefore **return to running**, not a normal base/build we
 - Progress only after the key session and most of the week are completed without a red
   flag. A missed key session repeats the focus; whole-program overload deloads it.
 
-The target remains sub-1:37:14 for the 21K trail course. Under the app's current course
-assumptions, that requires substantially better fitness than the 1:38:19 road PB; the
-2026 age-group winning time is a benchmark, not a guarantee of winning in 2027.
+### Where the goal actually stands (assessed 2026-09-14)
+
+**Running 1:37:14 and winning the bracket are different questions with different
+answers, and conflating them is the biggest strategic error in the plan.**
+
+1:37:14 on a 250m-gain trail course is ~4:36/km, against a 4:39/km road PB from 2022 — it
+asks the athlete to be faster than he has ever been, five years later, on harder terrain.
+Current easy pace is 7:44/km at HR 143, against 6:30/km at the same HR twelve months ago.
+Combined with the consistency record above, the honest read is **unlikely**.
+
+Winning the bracket is a genuinely different proposition. The 2026 results: 1st 1:37:14,
+**2nd 1:59:08**, 3rd 2:00:15. A 22-minute gap means the 2026 winner was an outlier (2nd
+overall) who happened to be 18-29; the bracket's real standard is closer to 1:59. Sub-1:50
+probably wins in a normal year, and sub-1:55 podiums.
+
+The target was set to the 2026 winner's time on the assumption that is what winning costs.
+It is not — it is the hardest number in the table. Chasing it is also the *riskier* path
+to winning, because it pushes training beyond what the consistency record supports, which
+is exactly how the previous three blocks ended.
+
+Recommended re-anchor: primary goal **12 consecutive weeks of 3+ runs** (never yet
+achieved, and the only variable that matters now); A-goal **sub-1:48**; 1:37:14 retained
+as a stretch to be re-evaluated on evidence, not retired. Checkpoints: 15km continuous by
+mid-December, a 10K time trial in early February (sub-44:00 keeps 1:37 alive), and an
+18-21km trail long run with race-like vert in mid-March.
+
+**Unverified input that moves all of this:** the 250m course gain is an assumption in
+`predict/live.ts`. If Huemul is 600m+, every pace target above shifts and trail-specific
+work matters far more than flat-road fitness.
 
 ## What Coach v2 now does
 
@@ -71,34 +105,43 @@ assumptions, that requires substantially better fitness than the 1:38:19 road PB
 12. Looks **forward**: `deterministic/trajectory.ts` works backwards from race day to the
     weekly growth rate the goal still requires, and reports how many whole weeks can
     still be missed before the goal itself has to change.
+13. Fits the athlete's real week: run days are inferred from his own history
+    (`loadRunDays`, the twin of `loadStrengthDays`) rather than assumed from a template.
+14. Checks its own output against **coaching properties** as well as the S2 validator —
+    the tier that asks whether a legal week still makes sense for this athlete.
 
 ## Inputs still needed from Juan
 
-The most valuable next input is the gym split. Set `ATHLETE_GYM_DAYS` and
-`ATHLETE_LOWER_BODY_DAYS` in `.env` using 0=Monday through 6=Sunday. Strava's
-`Weight Training` label cannot distinguish upper, lower, or full-body work.
+The gym split is **configured** (2026-09-14): `ATHLETE_GYM_DAYS` and
+`ATHLETE_LOWER_BODY_DAYS` are set in Vercel, which also settles red-team L2 for this
+athlete — inference is no longer used for strength days. `ATHLETE_RUN_DAYS` exists as the
+same escape hatch for run days if the inferred pattern is drift rather than preference.
 
-The next product input is a 20-second post-session check-in:
+**The one input still missing is the check-in, and it is now the single thing blocking
+progression.** Zero check-ins have ever been recorded. Readiness gates PROGRESS, so every
+week can reach PROCEED at best and volume stays flat no matter how well it was executed —
+the week of 2026-09-07 was 100% compliant with the key session done, and still held.
 
-- Session RPE (1–10).
-- Pain during the run.
-- Pain or unusual soreness the next morning.
-- Gym focus and lower-body difficulty.
-
-Without those signals the software can measure completion and external load, but it
-cannot know whether impact was tolerated. Missing feedback must never be treated as a
-green recovery signal.
+The friction excuse is gone as of 2026-09-14: the prompt is on the Now page and one tap
+submits the clean answer for every pending run. What it cannot do is invent the answer.
+Missing feedback must never be treated as a green recovery signal.
 
 ## Spec & review library (Fable-written, cheap-model-implementable)
 
 | doc | what | status |
 |---|---|---|
-| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1/H2/M3/M1 FIXED 2026-07-19; L1 FIXED 2026-08-23** (one `resolveHrMax()` in `zones.ts` — it resolves max HR to 201, so the easy ceiling is 159). Open: M2 (immutable plan revisions), L2 (strength-day over-inference — live plan still infers 5 gym days), L3. | H1/H2/M3/M1/L1 done |
+| `docs/coach-v2-redteam-2026-07-19.md` | Adversarial review of the coaching model. **H1/H2/M3/M1 FIXED 2026-07-19; L1 FIXED 2026-08-23** (one `resolveHrMax()` in `zones.ts` — it resolves max HR to 201, so the easy ceiling is 159). Open: M2 (immutable plan revisions), L3. **L2 settled 2026-09-14** by configuring `ATHLETE_GYM_DAYS` — strength days are no longer inferred for this athlete. | H1/H2/M3/M1/L1 done |
 | `docs/p1-forecast-implementation.md` | Anchored performance state + freshness-aware intervals + scenario forecast | spec ready |
 | `docs/p1.5-training-anchors-implementation.md` | Mine streams for max-effort anchors (depends on P1) | spec ready |
-| `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach (P-SAFE-1 is the permanent regression net for red-team H1) | spec ready |
+| `docs/f4-eval-harness-implementation.md` | Golden set + property evals for the composed coach. **The property half shipped 2026-09-14** as `deterministic/coachProperties.ts`; the golden set and the historical replay harness are still unbuilt. | half shipped |
 
-Suggested order: **~~red-team H1+H2+M3+M1+L1~~ → ~~P0~~ (done) → F4 → P1 → P1.5.** (red-team L2 — strength-day over-inference — is still open and still cheap.)
+Suggested order: **~~red-team H1+H2+M3+M1+L1~~ → ~~P0~~ → ~~F4 properties~~ (done) → P1 → P1.5.**
+
+P1 is the next substantial piece, but it is gated on evidence rather than engineering: it
+needs a fresh performance anchor, and there is none until the 7km unlock (~3 weeks) and
+realistically not until a February time trial. Calibrating a performance model against
+nothing is the failure mode to avoid. The F4 golden set and replay harness are the
+useful work in the meantime.
 
 ### Shipped since, not yet specced anywhere
 
@@ -166,6 +209,44 @@ Suggested order: **~~red-team H1+H2+M3+M1+L1~~ → ~~P0~~ (done) → F4 → P1 �
   immutable plan revisions). Progression is unaffected — REPEAT and PROCEED both
   multiply by 1.0.
 
+- **The plan fits the athlete's real week** (2026-09-14, `02a0503`). `loadRunDays()` is
+  the run-side twin of `loadStrengthDays()`: explicit `ATHLETE_RUN_DAYS` wins, else the
+  habitual weekdays of the last 90 days (ranked by frequency, ties broken on the most
+  recent run, needing >=6 runs before it trusts a pattern), else the template. The plan
+  had prescribed Tue/Thu/Sun for **five consecutive weeks** to an athlete who ran
+  Mon/Wed/Sun every time, and nothing noticed.
+
+  The preference is an ANCHOR, never an override: it replaces the deviation target in
+  `scheduleScore`, and the existing filters still reject consecutive run days,
+  lower-body/key conflicts and missing rest days. *Adapt where sessions land, never what
+  they are.* Also in this change: support sessions match on dose in an all-easy week (three
+  runs had scored 2/3 because one landed on Monday); return-to-run copy drops the
+  run/walk framing once the distance has been run unbroken; and the return-to-run
+  explanation names the gate that actually fired instead of always quoting the gap.
+
+- **One-tap check-in** (2026-09-14, `c937615`). P0 shipped the loop and adoption was
+  zero. The prompt now appears on the Now page, and one button submits the clean answer
+  for every pending run. Batching is a shortcut for *typing*, never for reporting: the
+  button states a positive fact, so a tap is still an explicit athlete report. A batch
+  that does not cover every run still cannot confirm readiness, and a batch reporting
+  pain still raises the red flag — both tested.
+
+- **Coaching properties** (2026-09-14, `16bbc6e`) — `deterministic/coachProperties.ts`.
+  The tier above the S2 validator. Every defect found by reading the live plan against
+  the real training log passed the validator cleanly; the week was *valid* every time.
+  They were plans that were internally consistent and coaching nonsense — a category the
+  validator cannot express, because each is about the plan's relationship to the
+  ATHLETE rather than to the rulebook. Six properties, each with a regression test
+  reproducing the defect that motivated it. Advisory, not hard rules: `freePlan` logs
+  them rather than throwing, because a property can fail for a defensible reason.
+
+- **The +10% session guardrail binds every run** (2026-09-14, `26e5c51`). The BJSM
+  cohort is about a *single* run — any of them — exceeding the longest run of the prior
+  30 days by more than 10%. The cap was applied only to the session the template called
+  "key"; `oneHighDayWeek` had no session cap at all. A returning athlete whose longest
+  run was 2km was prescribed **4km easy days**, double the guardrail, on exactly the days
+  it was never checked. Found by the property matrix within an hour of adding it.
+
 ## Highest-priority product gaps
 
 ### ~~P0~~ — the feedback loop is closed (shipped 2026-09-07)
@@ -199,6 +280,22 @@ Still open from the original P0 scope, deliberately not built:
   (red-team M2 — the refresh button makes multi-generation of a week routine).
 - Matching planned and actual sessions by stable session IDs, discipline, and
   required/optional role; reviewing time-at-effort rather than only kilometres.
+
+### Open gaps found but deliberately not built
+
+- **Frequency does not adapt when the session cap binds.** An athlete running 20km/week
+  whose longest single run is 2km gets three runs capped at 2.2km — 6.6km, far below his
+  actual behavior, and `not_below_recent_behavior` correctly fires. The right answer is
+  more run *days*, not longer runs, but run-day count comes from phase alone. Not this
+  athlete's profile; real for someone rebuilding on many short runs.
+- **`oneHighDayWeek` share split.** 18% high / 28% long / remainder split across the easy
+  days means a 3-run quality week hands the single easy day 54% — the biggest run of the
+  week. Same class as the fixed long-run-share defect, unreachable until the build phase.
+  Fix it before the first threshold week is generated.
+- **Reviews are never recomputed.** `reviewLatestCompletedWeek` only reviews weeks with
+  no existing row, so a logic fix leaves historical reviews stale — the 2026-09-07 row
+  still records 2 of 3 runs under the pre-fix matching. Rewriting them is what red-team
+  M2 exists to prevent, so this needs versioned reviews, not a backfill.
 
 ### P1 — make the nine-month forecast real
 
