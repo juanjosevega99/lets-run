@@ -4,6 +4,7 @@ import { buildWeekTemplate, plannedRunVolumeCeiling } from "../deterministic/wee
 import { phaseRunDays } from "../deterministic/trainingPhase.js";
 import { isAllEasyWeek } from "../deterministic/schedule.js";
 import { validateWeek, type PlannedSession } from "../deterministic/validator.js";
+import { checkCoachProperties } from "../deterministic/coachProperties.js";
 import type { Log } from "../strava/sync.js";
 import { reviewLatestCompletedWeek } from "./review.js";
 
@@ -77,6 +78,25 @@ export async function generateFreeWeekPlan(sql: Sql, log: Log): Promise<void> {
     throw new Error(
       `template produced an invalid week (this is a bug): ${violations.map((v) => `${v.rule} (${v.detail})`).join("; ")}`,
     );
+  }
+
+  // Coaching properties sit ABOVE the validator: the validator proves the week breaks
+  // no rules, which every shipped defect also did. These ask whether the week still
+  // makes sense for THIS athlete. They are advisory by design — unlike a rule
+  // violation, a property can fail for a defensible reason (a lower-body conflict
+  // forcing an unusual day), so they are surfaced, not thrown.
+  const propertyViolations = checkCoachProperties({
+    sessions,
+    keySession: sessions.find((s) => s.title === plan.key_session.title) ?? sessions[0]!,
+    trainingPhase: ctx.trainingPhase,
+    previousDecision: ctx.previousDecision,
+    previousWeekKm: ctx.previousWeekKm,
+    recentWeeklyKm: ctx.recentWeeklyKm,
+    longestRunKm30d: ctx.longestRunKm30d,
+    preferredRunDays: ctx.preferredRunDays,
+  });
+  for (const violation of propertyViolations) {
+    log(`  ! coaching property ${violation.property}: ${violation.detail}`);
   }
 
   // Plan the week the athlete is actually in, not always the next one. Midweek that is
