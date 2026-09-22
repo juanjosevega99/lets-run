@@ -104,6 +104,30 @@ const RETURN_EASY_SESSION_CAP_KM = 4;
 function sessionCapKm(longestRunKm30d: number): number {
   return longestRunKm30d > 0 ? longestRunKm30d * SESSION_GROWTH_CAP : NO_HISTORY_SESSION_CAP_KM;
 }
+
+/**
+ * How much of a reduced week the protected long run may occupy, so holding it never
+ * collapses the week into a single session plus two token jogs.
+ */
+const LONG_RUN_FLOOR_MAX_SHARE = 0.5;
+
+/**
+ * Floor under the long run: distance the athlete has ALREADY covered in the last 30
+ * days, so holding it is safe by construction.
+ *
+ * The long run used to be a pure share of weekly volume, so a down week shrank it in
+ * proportion — after one 1-run week the plan prescribed a 4.6km "longest run" to an
+ * athlete who had run 5.8km nine days earlier, with the guardrail permitting 6.38km.
+ * It went backwards for no safety reason. The long run is the last thing a coach cuts:
+ * when volume drops, the easy filler gives way and the long run stands.
+ *
+ * A taper and an explicit deload are cutting on purpose, so neither gets a floor.
+ */
+function longRunFloorKm(x: WeekTemplateInput, totalKm: number, sessionCap: number): number {
+  if (x.trainingPhase === "taper" || x.previousDecision === "DELOAD") return 0;
+  if (x.longestRunKm30d <= 0) return 0;
+  return Math.min(x.longestRunKm30d, sessionCap, totalKm * LONG_RUN_FLOOR_MAX_SHARE);
+}
 export const RUNNING_LOAD_GUARDRAIL = -20;
 
 export function buildWeekTemplate(x: WeekTemplateInput): WeekTemplate {
@@ -149,8 +173,12 @@ function allEasyWeek(
   const easyDays = x.runDays.filter((d) => d !== keyDay);
   const rawKey = totalKm * longRunShare(x.runDays.length);
   const sessionCap = sessionCapKm(x.longestRunKm30d);
-  const rawEasy = easyDays.length > 0 ? (totalKm - rawKey) / easyDays.length : 0;
-  const keyKm = floor1(Math.min(rawKey, sessionCap));
+  // Settle the long run FIRST, then let the easy days share what is left — so a
+  // protected long run is paid for out of the filler, not the other way round.
+  const keyKm = floor1(
+    Math.min(Math.max(rawKey, longRunFloorKm(x, totalKm, sessionCap)), sessionCap),
+  );
+  const rawEasy = easyDays.length > 0 ? Math.max(0, totalKm - keyKm) / easyDays.length : 0;
   const eachEasyKm = floor1(Math.min(rawEasy, sessionCap));
   const effort = easyEffort(x);
   const keyTitle =
@@ -193,15 +221,28 @@ function returnToRunWeek(
   const kmByDay = new Map<number, number>();
   const minutesByDay = new Map<number, number>();
 
+  const guardrail = sessionCapKm(x.longestRunKm30d);
+  // Settle the long run first — held at what has already been covered recently — and
+  // let the easy days divide the remainder.
+  const keyRatio = ratios[runDays.indexOf(keyDay)] ?? 1 / runDays.length;
+  const keyKm = floor1(
+    Math.min(Math.max(totalKm * keyRatio, longRunFloorKm(x, totalKm, guardrail)), guardrail),
+  );
+  const easyRatioTotal = runDays.reduce(
+    (sum, day, i) => (day === keyDay ? sum : sum + (ratios[i] ?? 1 / runDays.length)),
+    0,
+  );
+  const easyPool = Math.max(0, totalKm - keyKm);
+
   for (let i = 0; i < runDays.length; i++) {
     const day = runDays[i]!;
     const ratio = ratios[i] ?? 1 / runDays.length;
     // The easy days keep their short absolute ceiling, but can never sit ABOVE the
     // guardrail — which is what inverted the week, handing a 2km-longest athlete 4km
     // easy runs beside a 2.2km "longest" run.
-    const guardrail = sessionCapKm(x.longestRunKm30d);
     const sessionCap = day === keyDay ? guardrail : Math.min(RETURN_EASY_SESSION_CAP_KM, guardrail);
-    const km = floor1(Math.min(totalKm * ratio, sessionCap));
+    const share = easyRatioTotal > 0 ? ratio / easyRatioTotal : 0;
+    const km = day === keyDay ? keyKm : floor1(Math.min(easyPool * share, sessionCap));
     kmByDay.set(day, km);
     const baseMinutes = minutesBase[i] ?? Math.round(75 / runDays.length);
     // Duration tracks the (already session-capped) distance, not the raw weekly dose.

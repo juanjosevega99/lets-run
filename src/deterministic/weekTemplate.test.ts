@@ -247,6 +247,75 @@ describe("buildWeekTemplate — behavior", () => {
   });
 });
 
+describe("buildWeekTemplate — the long run is the last thing cut", () => {
+  // Juan, week of 2026-09-21: one run the previous week, but 5.8km covered nine days
+  // earlier. The long run was a pure share of weekly volume, so it shrank with the
+  // week — prescribing a 4.6km "longest run" with the guardrail permitting 6.38km.
+  const downWeek = (over: Partial<WeekTemplateInput> = {}) =>
+    buildWeekTemplate(
+      baseInput({
+        trainingPhase: "return_to_run",
+        limiter: "aerobic_base",
+        runDays: [1, 3, 6],
+        previousWeekKm: 5.5,
+        recentWeeklyKm: [4.1, 8.9, 14.5, 5.5],
+        longestRunKm30d: 5.8,
+        ...over,
+      }),
+    );
+
+  it("holds the long run at what was already covered recently", () => {
+    expect(downWeek().key_session.planned_km).toBeGreaterThanOrEqual(5.7);
+  });
+
+  it("pays for it out of the easy days, not by exceeding the week's ceiling", () => {
+    const plan = downWeek();
+    const easy = runningSessions(plan).filter((s) => s.title !== plan.key_session.title);
+    for (const s of easy) expect(s.planned_km).toBeLessThan(plan.key_session.planned_km);
+    expect(totalRunKm(plan)).toBeLessThanOrEqual(11.6 + 1e-9);
+  });
+
+  it("still never breaches the +10% session guardrail", () => {
+    expect(downWeek().key_session.planned_km).toBeLessThanOrEqual(5.8 * 1.1 + 1e-9);
+  });
+
+  it("never lets the protected long run swallow more than half the week", () => {
+    const plan = downWeek({ previousWeekKm: 6, recentWeeklyKm: [6], longestRunKm30d: 20 });
+    expect(plan.key_session.planned_km).toBeLessThanOrEqual(totalRunKm(plan) * 0.6);
+    expect(runningSessions(plan).filter((s) => s.planned_km > 0).length).toBeGreaterThan(1);
+  });
+
+  it("does not floor a taper — cutting is the point there", () => {
+    const taper = downWeek({ trainingPhase: "taper" });
+    const normal = downWeek();
+    expect(taper.key_session.planned_km).toBeLessThan(normal.key_session.planned_km);
+  });
+
+  it("does not floor an explicit deload", () => {
+    const deload = downWeek({ previousDecision: "DELOAD" });
+    expect(deload.key_session.planned_km).toBeLessThan(downWeek().key_session.planned_km);
+  });
+
+  it("has nothing to hold when there is no recent long run", () => {
+    const plan = downWeek({ longestRunKm30d: 0 });
+    expect(plan.key_session.planned_km).toBeLessThanOrEqual(4);
+  });
+
+  it("applies in a base week too, not only return-to-run", () => {
+    const plan = buildWeekTemplate(
+      baseInput({
+        trainingPhase: "base",
+        limiter: "long_endurance",
+        runDays: [1, 3, 6],
+        previousWeekKm: 5.5,
+        recentWeeklyKm: [14.5, 5.5],
+        longestRunKm30d: 5.8,
+      }),
+    );
+    expect(plan.key_session.planned_km).toBeGreaterThanOrEqual(5.7);
+  });
+});
+
 describe("buildWeekTemplate — the +10% session guardrail binds EVERY run", () => {
   // The guardrail used to protect only the session the template called "key", so the
   // other runs were unbounded: a returning athlete whose longest run was 2km got 4km
