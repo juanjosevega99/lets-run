@@ -247,22 +247,63 @@ describe("buildWeekTemplate — behavior", () => {
   });
 });
 
+describe("plannedRunVolumeCeiling — the haircut grows with the gap", () => {
+  const ceiling = (recentWeeklyKm: number[], previousWeekKm: number) =>
+    plannedRunVolumeCeiling(
+      baseInput({ tsb: 0, previousDecision: "REPEAT", previousWeekKm, recentWeeklyKm }),
+    );
+
+  it("barely discounts a week that has only just passed", () => {
+    // Peak was LAST week: no haircut can apply, previousWeekKm already carries it.
+    expect(ceiling([5, 5, 5, 20], 20)).toBeCloseTo(20, 1);
+  });
+
+  it("gives back little after a single quiet week", () => {
+    // Juan, week of 2026-09-21: a 14.5km week two weeks back, one 5.5km week since.
+    // The flat 0.8 produced 11.6km; two weeks of decay gives 0.90.
+    expect(ceiling([4.1, 8.9, 14.5, 5.5], 5.5)).toBeCloseTo(13.1, 1);
+  });
+
+  it("discounts harder the older the week gets", () => {
+    const twoWeeks = ceiling([0, 0, 20, 5], 5);
+    const fourWeeks = ceiling([20, 0, 0, 5], 5);
+    expect(twoWeeks).toBeGreaterThan(fourWeeks);
+    expect(fourWeeks).toBeCloseTo(16, 1); // the old flat floor, 0.8
+  });
+
+  it("never discounts below the old flat share", () => {
+    expect(ceiling([20, 0, 0, 0], 0)).toBeGreaterThanOrEqual(20 * 0.8 - 1e-9);
+  });
+
+  it("prefers a smaller recent week over a bigger stale one when the discount says so", () => {
+    // 14km last week (x0.95 = 13.3) beats 16km four weeks ago (x0.8 = 12.8).
+    expect(ceiling([16, 0, 0, 14], 0)).toBeCloseTo(13.3, 1);
+  });
+
+  it("still never looks backwards during a taper", () => {
+    expect(
+      plannedRunVolumeCeiling(
+        baseInput({ trainingPhase: "taper", tsb: 0, previousDecision: null, previousWeekKm: 20, recentWeeklyKm: [50, 40, 30, 20] }),
+      ),
+    ).toBeCloseTo(15, 1);
+  });
+});
+
 describe("buildWeekTemplate — the long run is the last thing cut", () => {
   // Juan, week of 2026-09-21: one run the previous week, but 5.8km covered nine days
   // earlier. The long run was a pure share of weekly volume, so it shrank with the
   // week — prescribing a 4.6km "longest run" with the guardrail permitting 6.38km.
-  const downWeek = (over: Partial<WeekTemplateInput> = {}) =>
-    buildWeekTemplate(
-      baseInput({
-        trainingPhase: "return_to_run",
-        limiter: "aerobic_base",
-        runDays: [1, 3, 6],
-        previousWeekKm: 5.5,
-        recentWeeklyKm: [4.1, 8.9, 14.5, 5.5],
-        longestRunKm30d: 5.8,
-        ...over,
-      }),
-    );
+  const downWeekInput = (over: Partial<WeekTemplateInput> = {}) =>
+    baseInput({
+      trainingPhase: "return_to_run",
+      limiter: "aerobic_base",
+      runDays: [1, 3, 6],
+      previousWeekKm: 5.5,
+      recentWeeklyKm: [4.1, 8.9, 14.5, 5.5],
+      longestRunKm30d: 5.8,
+      ...over,
+    });
+  const downWeek = (over: Partial<WeekTemplateInput> = {}) => buildWeekTemplate(downWeekInput(over));
 
   it("holds the long run at what was already covered recently", () => {
     expect(downWeek().key_session.planned_km).toBeGreaterThanOrEqual(5.7);
@@ -272,7 +313,9 @@ describe("buildWeekTemplate — the long run is the last thing cut", () => {
     const plan = downWeek();
     const easy = runningSessions(plan).filter((s) => s.title !== plan.key_session.title);
     for (const s of easy) expect(s.planned_km).toBeLessThan(plan.key_session.planned_km);
-    expect(totalRunKm(plan)).toBeLessThanOrEqual(11.6 + 1e-9);
+    // Against the controller's OWN ceiling, not a hardcoded number — the ceiling moves
+    // when the recovery share changes, and the invariant being tested does not.
+    expect(totalRunKm(plan)).toBeLessThanOrEqual(plannedRunVolumeCeiling(downWeekInput()) + 1e-9);
   });
 
   it("still never breaches the +10% session guardrail", () => {

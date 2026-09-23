@@ -425,13 +425,42 @@ export function runningProgressionFactor(
  */
 const RECENT_PEAK_WEEKS = 4;
 /**
- * Fraction of a recent peak week the plan may return to directly. Returning to 80% of
- * a load COMPLETED within the last month is re-entry, not progression — and the
- * per-session caps in allEasyWeek/returnToRunWeek still hold any single run to +10% of
- * the longest recent run, which is where the injury evidence actually sits (BJSM 2025,
- * cited in NEXT_STEPS.md). Weekly totals and session length are separate guardrails.
+ * How much of a past week the plan may return to directly, as a function of how long
+ * ago that week was.
+ *
+ * This was a flat 0.8 regardless of recency, which is wrong at both ends: after ONE
+ * quiet week it handed back 20% of a load the athlete had just been carrying (a 14.5km
+ * week two weeks earlier became an 11.6km ceiling, and after the long-run floor took
+ * its share the midweek runs came out at 20 minutes). Detraining does not work that
+ * way — a week off costs plasma volume, not fitness; meaningful aerobic decline needs
+ * two to four weeks.
+ *
+ * So the haircut grows with the gap and bottoms out at the old flat value. The
+ * per-session +10% cap is untouched and still holds any single run to what the athlete
+ * has recently covered, which is where the injury evidence actually sits (BJSM 2025).
+ * Weekly totals and session length remain separate guardrails — and the weekly one is
+ * the softer of the two, since a generic weekly progression rule did NOT prevent injury
+ * in trial (both cited in NEXT_STEPS.md "Evidence guardrails").
  */
-const RECENT_PEAK_RECOVERY_SHARE = 0.8;
+const RECOVERY_SHARE_FLOOR = 0.8;
+const RECOVERY_DECAY_PER_WEEK = 0.05;
+
+function recoveryShare(weeksAgo: number): number {
+  return Math.max(RECOVERY_SHARE_FLOOR, 1 - RECOVERY_DECAY_PER_WEEK * weeksAgo);
+}
+
+/**
+ * The largest recent week still safe to return to, discounted by its own age. Taking
+ * the max of the DISCOUNTED weeks rather than discounting the single biggest one means
+ * a slightly smaller but much more recent week can legitimately win.
+ */
+function recoveryBaselineKm(recentWeeklyKm: number[] | undefined): number {
+  const weeks = (recentWeeklyKm ?? []).slice(-RECENT_PEAK_WEEKS);
+  return weeks.reduce(
+    (best, km, i) => Math.max(best, Math.max(0, km) * recoveryShare(weeks.length - i)),
+    0,
+  );
+}
 
 /** Exact weekly running ceiling shared by both planner implementations. */
 export function plannedRunVolumeCeiling(
@@ -452,11 +481,8 @@ export function plannedRunVolumeCeiling(
   // the baseline permanently, so the prescription ratcheted down below what the athlete
   // was already running unprompted (key session 5.4 -> 4.5 -> 1.6km against a 5.6km
   // longest run) and became safe to ignore. A taper never looks backwards for volume.
-  const recentPeakKm = Math.max(0, ...(x.recentWeeklyKm ?? []).slice(-RECENT_PEAK_WEEKS));
   const baseline =
-    x.trainingPhase === "taper"
-      ? previousKm
-      : Math.max(previousKm, recentPeakKm * RECENT_PEAK_RECOVERY_SHARE);
+    x.trainingPhase === "taper" ? previousKm : Math.max(previousKm, recoveryBaselineKm(x.recentWeeklyKm));
   const factor = runningProgressionFactor(x);
   const planned = baseline * factor;
   // The race trajectory may SHAPE growth the athlete has already earned — it must never
