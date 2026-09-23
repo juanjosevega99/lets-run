@@ -273,6 +273,10 @@ export function layout(title: string, activePath: string, body: string): string 
   .logged-list { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); }
   .logged-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: .9rem 1rem; border-bottom: 1px solid var(--line); }
   .logged-row:last-child { border-bottom: 0; }
+  .sync-form { display: flex; flex-wrap: wrap; gap: .7rem; align-items: center; margin: 1rem 0 0; }
+  .sync-form button { font: inherit; font-weight: 700; padding: .55rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; cursor: pointer; }
+  .sync-form button:hover { border-color: var(--muted-strong); }
+  .sync-form .sub { margin: 0; flex: 1 1 16rem; }
   .checkin-prompt { display: grid; gap: .8rem; padding: 1.1rem 1.2rem; margin: 1.4rem 0; border: 1px solid var(--line); border-radius: var(--radius); }
   .checkin-prompt-copy p { margin: .3rem 0 0; }
   .checkin-prompt-form { margin: 0; }

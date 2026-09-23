@@ -46,6 +46,10 @@ export function renderWeek(d: WeekData): string {
   <section class="section-block" aria-labelledby="logged-heading">
     <div class="section-heading"><div><p class="eyebrow">Actual work</p><h2 id="logged-heading">Logged in this plan week</h2></div><p class="section-copy">The coach compares completed work with the prescription before building the next week.</p></div>
     ${renderLogged(d.activities, d.tz)}
+    <form class="sync-form" method="post" action="/actions/sync">
+      <button type="submit">Pull new activities from Strava</button>
+      <span class="sub">Updates the record and your training load. It does not rebuild this week's plan — use <strong>Update training</strong> for that.</span>
+    </form>
   </section>`;
 }
 

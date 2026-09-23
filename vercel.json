@@ -7,11 +7,43 @@
     }
   },
   "rewrites": [
-    { "source": "/", "destination": "/api?path=/" },
-    { "source": "/week", "destination": "/api?path=/week" },
-    { "source": "/zones", "destination": "/api?path=/zones" },
-    { "source": "/trajectory", "destination": "/api?path=/trajectory" },
-    { "source": "/actions/refresh", "destination": "/api?path=/actions/refresh" },
-    { "source": "/actions/checkin", "destination": "/api?path=/actions/checkin" }
+    {
+      "source": "/",
+      "destination": "/api?path=/"
+    },
+    {
+      "source": "/week",
+      "destination": "/api?path=/week"
+    },
+    {
+      "source": "/zones",
+      "destination": "/api?path=/zones"
+    },
+    {
+      "source": "/trajectory",
+      "destination": "/api?path=/trajectory"
+    },
+    {
+      "source": "/actions/refresh",
+      "destination": "/api?path=/actions/refresh"
+    },
+    {
+      "source": "/actions/checkin",
+      "destination": "/api?path=/actions/checkin"
+    },
+    {
+      "source": "/actions/sync",
+      "destination": "/api?path=/actions/sync"
+    },
+    {
+      "source": "/actions/cron",
+      "destination": "/api?path=/actions/cron"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/actions/cron",
+      "schedule": "0 2 * * *"
+    }
   ]
 }

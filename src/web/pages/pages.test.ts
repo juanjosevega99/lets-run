@@ -448,3 +448,19 @@ describe("renderCheckinPrompt", () => {
   });
 });
 
+describe("renderWeek — pull-activities button", () => {
+  const base = { tz: "America/Bogota", plan: null, activities: [], checkin: [] };
+
+  it("offers a sync that does not rebuild the plan", () => {
+    const html = renderWeek(base);
+    expect(html).toContain('action="/actions/sync"');
+    expect(html).toContain("Pull new activities from Strava");
+    // The distinction matters: a mid-week sync must not reshuffle the prescription.
+    expect(html).toContain("does not rebuild this week");
+  });
+
+  it("posts it, so a prefetch can never trigger a write", () => {
+    expect(renderWeek(base)).toContain('class="sync-form" method="post"');
+  });
+});
+

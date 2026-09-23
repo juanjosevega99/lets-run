@@ -20,18 +20,32 @@ export interface RefreshResult {
   error?: string;
 }
 
-const STEPS: { name: string; run: (sql: Sql, log: Log) => Promise<unknown> }[] = [
+export type RefreshStep = { name: string; run: (sql: Sql, log: Log) => Promise<unknown> };
+
+/** Everything: the Sunday-evening action that also rebuilds the week's prescription. */
+export const FULL_REFRESH_STEPS: RefreshStep[] = [
   { name: "sync", run: syncStrava },
   { name: "fitness", run: rebuildFitness },
   { name: "current shape", run: generateLivePrediction },
   { name: "plan", run: generateFreeWeekPlan },
 ];
 
-export async function runRefresh(sql: Sql): Promise<RefreshResult> {
+/**
+ * Bring the record up to date WITHOUT rewriting the prescription.
+ *
+ * Used by the per-activity sync button and by the scheduled job. A mid-week sync must
+ * not regenerate the plan: the athlete is part-way through a week, and silently
+ * reshuffling the remaining sessions underneath him makes the plan untrustworthy — and
+ * would let a background job change training nobody asked it to change. Planning stays
+ * an explicit act.
+ */
+export const SYNC_ONLY_STEPS: RefreshStep[] = FULL_REFRESH_STEPS.filter((s) => s.name !== "plan");
+
+export async function runRefresh(sql: Sql, steps: RefreshStep[] = FULL_REFRESH_STEPS): Promise<RefreshResult> {
   const log: string[] = [];
   const append: Log = (line) => log.push(line);
 
-  for (const step of STEPS) {
+  for (const step of steps) {
     append(`── ${step.name} ──`);
     try {
       await step.run(sql, append);

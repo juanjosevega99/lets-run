@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { connect } from "../db.js";
 import { layout } from "./layout.js";
 import { RACE, daysToRace } from "../lib/race.js";
-import { runRefresh } from "../pipeline/refresh.js";
+import { runRefresh, SYNC_ONLY_STEPS } from "../pipeline/refresh.js";
 import {
   allRaces,
   dashboardTz,
@@ -78,6 +78,55 @@ export async function requestHandler(req: IncomingMessage, res: ServerResponse):
       res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
     } finally {
       refreshInFlight = false;
+    }
+    return;
+  }
+
+  // Bring the record up to date without touching the plan. Plain form POST rather
+  // than the refresh button's fetch/JSON dance: it is a one-liner, it needs no
+  // JavaScript, and Post/Redirect/Get means a reload cannot resubmit it.
+  if (path === "/actions/sync") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "content-type": "text/plain", allow: "POST" });
+      res.end("POST required");
+      return;
+    }
+    try {
+      const result = await runRefresh(sql, SYNC_ONLY_STEPS);
+      if (!result.ok) console.error(`sync failed at ${result.failedStep}: ${result.error}`);
+      res.writeHead(303, { location: "/week" });
+      res.end();
+    } catch (err) {
+      console.error(err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end(`error: ${(err as Error).message}`);
+    }
+    return;
+  }
+
+  // Scheduled sync. Vercel Cron sends GET with `Authorization: Bearer $CRON_SECRET`
+  // when that variable is set; without it configured this endpoint refuses outright
+  // rather than exposing an unauthenticated write to anyone who guesses the path.
+  if (path === "/actions/cron") {
+    const secret = process.env.CRON_SECRET;
+    if (!secret) {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "CRON_SECRET is not configured" }));
+      return;
+    }
+    if (req.headers.authorization !== `Bearer ${secret}`) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "unauthorized" }));
+      return;
+    }
+    try {
+      const result = await runRefresh(sql, SYNC_ONLY_STEPS);
+      res.writeHead(result.ok ? 200 : 500, { "content-type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      console.error(err);
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
     }
     return;
   }
