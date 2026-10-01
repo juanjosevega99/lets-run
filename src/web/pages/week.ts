@@ -3,11 +3,14 @@ import { formatDuration, formatPace } from "../../lib/time.js";
 import type { CheckinActivity, LoggedActivity, PlanRow, PlanSessionRow } from "../queries.js";
 import type { SessionFeedback } from "../../plan/feedback.js";
 import { pendingRunCheckins, renderCheckinPrompt } from "./checkin.js";
+import type { RunIntensityResult } from "../../deterministic/runIntensity.js";
 
 export interface WeekData {
   activities: LoggedActivity[];
   plan: PlanRow | null;
   checkin: CheckinActivity[];
+  /** What each logged run actually was, from its HR stream. */
+  intensities?: Map<number, RunIntensityResult>;
   tz: string;
 }
 
@@ -45,7 +48,7 @@ export function renderWeek(d: WeekData): string {
 
   <section class="section-block" aria-labelledby="logged-heading">
     <div class="section-heading"><div><p class="eyebrow">Actual work</p><h2 id="logged-heading">Logged in this plan week</h2></div><p class="section-copy">The coach compares completed work with the prescription before building the next week.</p></div>
-    ${renderLogged(d.activities, d.tz)}
+    ${renderLogged(d.activities, d.tz, d.intensities ?? new Map(), d.plan)}
     <form class="sync-form" method="post" action="/actions/sync">
       <button type="submit">Pull new activities from Strava</button>
       <span class="sub">Updates the record and your training load. It does not rebuild this week's plan — use <strong>Update training</strong> for that.</span>
@@ -183,7 +186,35 @@ function renderSession(session: PlanSessionRow & { isKey: boolean }): string {
   </div>`;
 }
 
-function renderLogged(activities: LoggedActivity[], tz: string): string {
+const INTENSITY_LABELS: Record<RunIntensityResult["label"], string> = {
+  easy: "Easy",
+  moderate: "Moderate",
+  hard: "Hard",
+  unknown: "No HR",
+};
+
+/**
+ * The intensity a run ACTUALLY had, and — when it went harder than an all-easy week
+ * asked for — a plain statement of that. The prescription says what was meant; this
+ * says what happened, side by side.
+ */
+function renderIntensity(r: RunIntensityResult | undefined, plan: PlanRow | null): string {
+  if (!r || r.label === "unknown") return "";
+  const easy = r.easyShare != null ? ` · ${Math.round(r.easyShare * 100)}% easy` : r.source === "average" ? " · from avg HR" : "";
+  const plannedAllEasy =
+    plan != null && [plan.keySession, ...plan.supportSessions].every((s) => s.intensity !== "high");
+  const mismatch = plannedAllEasy && r.label === "hard";
+  return `<span class="${mismatch ? "pill pill--accent" : "pill pill--muted"}">${
+    mismatch ? "Planned easy · ran hard" : INTENSITY_LABELS[r.label]
+  }${easy}</span>`;
+}
+
+function renderLogged(
+  activities: LoggedActivity[],
+  tz: string,
+  intensities: Map<number, RunIntensityResult> = new Map(),
+  plan: PlanRow | null = null,
+): string {
   if (activities.length === 0) return `<p class="empty">Nothing logged yet in this plan week. That is context, not a judgment—the next update will adapt from what actually happened.</p>`;
   const dayFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: tz });
   return `<div class="logged-list">${activities
@@ -194,7 +225,9 @@ function renderLogged(activities: LoggedActivity[], tz: string): string {
       const stats = [km, duration, pace].filter(Boolean).join(" · ");
       return `<div class="logged-row">
         <span class="logged-day">${dayFmt.format(activity.startDate)}</span>
-        <div class="logged-name"><strong>${esc(activity.name)}</strong><span>${esc(activity.sportType)}</span></div>
+        <div class="logged-name"><strong>${esc(activity.name)}</strong><span>${esc(activity.sportType)}</span>${
+          activity.sportType.toLowerCase().includes("run") ? renderIntensity(intensities.get(activity.id), plan) : ""
+        }</div>
         <div class="logged-stats">${stats || "Completed"}</div>
       </div>`;
     })

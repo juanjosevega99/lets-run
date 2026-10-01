@@ -464,3 +464,52 @@ describe("renderWeek — pull-activities button", () => {
   });
 });
 
+describe("renderWeek — what each run actually was", () => {
+  const easyPlan = {
+    weekStart: "2026-09-28",
+    targetLimiter: "aerobic_base",
+    keySession: { day: 6, title: "Longest easy run", description: "easy", intensity: "low" as const, planned_km: 6.1 },
+    supportSessions: [{ day: 2, title: "Easy run", description: "easy", intensity: "low" as const, planned_km: 3 }],
+    explanation: "",
+    generatedAt: new Date("2026-09-28T00:00:00Z"),
+  };
+  const tempo = {
+    id: 42,
+    startDate: new Date("2026-10-01T11:00:00Z"),
+    name: "Morning Run",
+    sportType: "Run",
+    distanceM: 6780,
+    movingTimeS: 2399,
+  };
+
+  it("says so plainly when an easy prescription was run hard", () => {
+    const html = renderWeek({
+      tz: "America/Bogota",
+      plan: easyPlan,
+      checkin: [],
+      activities: [tempo],
+      intensities: new Map([[42, { label: "hard", easyShare: 0.15, hardShare: 0.15, measuredSeconds: 2400, source: "stream" }]]),
+    });
+    expect(html).toContain("Planned easy · ran hard");
+    expect(html).toContain("15% easy");
+  });
+
+  it("labels an easy run quietly", () => {
+    const html = renderWeek({
+      tz: "America/Bogota",
+      plan: easyPlan,
+      checkin: [],
+      activities: [tempo],
+      intensities: new Map([[42, { label: "easy", easyShare: 1, hardShare: 0, measuredSeconds: 2700, source: "stream" }]]),
+    });
+    expect(html).toContain("Easy · 100% easy");
+    expect(html).not.toContain("ran hard");
+  });
+
+  it("shows nothing for a run with no HR rather than inventing a label", () => {
+    const html = renderWeek({ tz: "America/Bogota", plan: easyPlan, checkin: [], activities: [tempo], intensities: new Map() });
+    expect(html).not.toContain("Planned easy");
+    expect(html).not.toContain("% easy");
+  });
+});
+

@@ -3,6 +3,8 @@ import type { PlannedSession } from "../deterministic/validator.js";
 import { dateOnly } from "../lib/time.js";
 import { dashboardTz } from "../web/queries.js";
 import type { Log } from "../strava/sync.js";
+import { combinedEasyShare, type RunIntensityResult } from "../deterministic/runIntensity.js";
+import { loadRunIntensities } from "./intensity.js";
 import {
   deriveReadiness,
   type GymDifficulty,
@@ -51,6 +53,60 @@ export interface WeekReviewResult {
   decision: WeekDecision;
   explanation: string;
 }
+
+export interface ActualIntensitySummary {
+  /** Runs whose heart rate says "hard", beyond the number of hard sessions planned. */
+  harderThanPlanned: number;
+  hardRuns: number;
+  plannedHardSessions: number;
+  /** Time-weighted easy share of the week's HR-measured running; null without streams. */
+  actualEasyShare: number | null;
+  note: string | null;
+}
+
+/**
+ * What the week ACTUALLY was, intensity-wise, against what was prescribed.
+ *
+ * Deliberately advisory: it does not move the decision. An unplanned hard run is not a
+ * readiness failure — the athlete may well have felt great — and it is not evidence of
+ * fitness either, so it must neither block nor grant PROGRESS. What it must not be is
+ * invisible, which is what it was: a 40-minute tempo prescribed as 20 minutes easy
+ * scored as an easy session completed.
+ */
+export function summarizeActualIntensity(
+  sessions: PlannedSession[],
+  runIntensities: RunIntensityResult[],
+): ActualIntensitySummary {
+  const plannedHardSessions = sessions.filter((s) => s.intensity === "high").length;
+  const hardRuns = runIntensities.filter((r) => r.label === "hard").length;
+  const harderThanPlanned = Math.max(0, hardRuns - plannedHardSessions);
+  const actualEasyShare = combinedEasyShare(runIntensities);
+  const notes: string[] = [];
+  if (harderThanPlanned > 0) {
+    notes.push(
+      `${harderThanPlanned} run${harderThanPlanned === 1 ? " was" : "s were"} run hard against ${plannedHardSessions === 0 ? "an all-easy prescription" : `${plannedHardSessions} planned hard session${plannedHardSessions === 1 ? "" : "s"}`}`,
+    );
+  }
+  if (actualEasyShare != null && actualEasyShare < MIN_ACTUAL_EASY_SHARE) {
+    notes.push(
+      `only ${(actualEasyShare * 100).toFixed(0)}% of the week's running was easy, under the ${(MIN_ACTUAL_EASY_SHARE * 100).toFixed(0)}% the plan is built on`,
+    );
+  }
+  return {
+    harderThanPlanned,
+    hardRuns,
+    plannedHardSessions,
+    actualEasyShare,
+    note: notes.length > 0 ? `${notes.join("; ")}.` : null,
+  };
+}
+
+/**
+ * The S2 polarization floor (75% low intensity) has only ever been enforced on the
+ * PLAN — every prescribed week passes it by construction. This applies the same floor
+ * to what the athlete actually ran.
+ */
+export const MIN_ACTUAL_EASY_SHARE = 0.75;
 
 /** Pure planned-vs-actual controller; persistence is kept below. */
 export function reviewWeek(x: WeekReviewInput): WeekReviewResult {
@@ -230,6 +286,8 @@ export async function reviewLatestCompletedWeek(
   // including a run 2.7x the planned key, still scored REPEAT because it fell on Monday
   // instead of Sunday. That REPEAT then held the next week's progression flat.
   const keyMatchesAnyDay = sessions.every((s) => s.intensity !== "high");
+  const runIntensityById = await loadRunIntensities(sql, runActivities.map((a) => Number(a.id)));
+  const intensity = summarizeActualIntensity(sessions, [...runIntensityById.values()]);
   const result = reviewWeek({
     sessions,
     keySession: key,
@@ -256,8 +314,19 @@ export async function reviewLatestCompletedWeek(
         readiness_reasons: readiness.reasons,
         runs_checked_in: readiness.runsCheckedIn,
         runs_total: readiness.runsTotal,
+        actual_intensity: runActivities.map((a) => {
+          const r = runIntensityById.get(Number(a.id));
+          return {
+            activity_id: Number(a.id),
+            label: r?.label ?? "unknown",
+            easy_share: r?.easyShare ?? null,
+            source: r?.source ?? "none",
+          };
+        }),
+        harder_than_planned: intensity.harderThanPlanned,
+        actual_easy_share: intensity.actualEasyShare,
       })},
-      ${result.explanation}
+      ${intensity.note ? `${result.explanation} Intensity: ${intensity.note}` : result.explanation}
     )
     on conflict (week_start) do update set
       compliance_pct = excluded.compliance_pct,
@@ -269,7 +338,7 @@ export async function reviewLatestCompletedWeek(
       reviewed_at = now()
   `;
   log(
-    `week review ${weekStart}: ${result.decision} · ${result.compliancePct.toFixed(0)}% · key ${result.keyCompleted ? "done" : "missed"} · check-ins ${readiness.runsCheckedIn}/${readiness.runsTotal}${readiness.reasons.length > 0 ? ` · ${readiness.reasons[0]}` : ""}`,
+    `week review ${weekStart}: ${result.decision} · ${result.compliancePct.toFixed(0)}% · key ${result.keyCompleted ? "done" : "missed"} · check-ins ${readiness.runsCheckedIn}/${readiness.runsTotal}${readiness.reasons.length > 0 ? ` · ${readiness.reasons[0]}` : ""}${intensity.note ? ` · ${intensity.note}` : ""}`,
   );
   return result;
 }

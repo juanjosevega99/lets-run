@@ -25,6 +25,7 @@ import {
 import { currentWeekIsComplete, reviewCutoffForReplan } from "../plan/context.js";
 import { raceTrajectory } from "../deterministic/trajectory.js";
 import { parseFeedbackForms } from "../plan/feedback.js";
+import { loadRunIntensities } from "../plan/intensity.js";
 import { renderNow } from "./pages/now.js";
 import { renderWeek } from "./pages/week.js";
 import { renderTrajectory } from "./pages/trajectory.js";
@@ -264,10 +265,14 @@ async function route(path: string): Promise<string | null> {
         plan ? activitiesForWeek(sql, plan.weekStart) : thisWeekActivities(sql),
         checkinActivities(sql, 10),
       ]);
+      const intensities = await loadRunIntensities(
+        sql,
+        activities.filter((a) => /run/i.test(a.sportType)).map((a) => a.id),
+      );
       return layout(
         "lets-run · plan week",
         "/week",
-        renderWeek({ activities, plan, checkin, tz: dashboardTz() }),
+        renderWeek({ activities, plan, checkin, intensities, tz: dashboardTz() }),
       );
     }
     case "/zones": {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { reviewWeek } from "./review.js";
+import { reviewWeek, summarizeActualIntensity } from "./review.js";
+import type { RunIntensityResult } from "../deterministic/runIntensity.js";
 import type { PlannedSession } from "../deterministic/validator.js";
 import { deriveReadiness, type SessionFeedback } from "./feedback.js";
 
@@ -243,3 +244,53 @@ describe("readiness → review, composed", () => {
     expect(review(feedback, [1, 2, 3]).decision).toBe("DELOAD");
   });
 });
+
+describe("summarizeActualIntensity — what the week actually was", () => {
+  const easyWeek: PlannedSession[] = [
+    { day: 0, title: "Easy", intensity: "low", plannedKm: 3 },
+    { day: 2, title: "Easy", intensity: "low", plannedKm: 3 },
+    { day: 6, title: "Long", intensity: "low", plannedKm: 6 },
+  ];
+  const run = (label: "easy" | "moderate" | "hard", easyShare: number, minutes: number): RunIntensityResult => ({
+    label,
+    easyShare,
+    hardShare: label === "hard" ? 0.15 : 0,
+    measuredSeconds: minutes * 60,
+    source: "stream",
+  });
+
+  it("flags a run that went hard against an all-easy prescription", () => {
+    // Juan, week of 2026-09-28: Mon easy 45 min, Thu 40-min tempo with a friend.
+    const s = summarizeActualIntensity(easyWeek, [run("easy", 1, 45), run("hard", 0.15, 40)]);
+    expect(s.harderThanPlanned).toBe(1);
+    expect(s.note).toContain("all-easy prescription");
+  });
+
+  it("flags a week whose actual running fell under the polarization floor", () => {
+    const s = summarizeActualIntensity(easyWeek, [run("easy", 1, 45), run("hard", 0.15, 40)]);
+    // (45 + 6) / 85 = 60% easy, under 75%
+    expect(s.actualEasyShare).toBeCloseTo(51 / 85, 2);
+    expect(s.note).toContain("was easy");
+  });
+
+  it("does not flag hard runs the plan asked for", () => {
+    const quality: PlannedSession[] = [...easyWeek, { day: 3, title: "Threshold", intensity: "high", plannedKm: 6 }];
+    expect(summarizeActualIntensity(quality, [run("easy", 1, 45), run("hard", 0.2, 30)]).harderThanPlanned).toBe(0);
+  });
+
+  it("says nothing about a week run as prescribed", () => {
+    expect(summarizeActualIntensity(easyWeek, [run("easy", 0.95, 30), run("easy", 1, 45)]).note).toBeNull();
+  });
+
+  it("is advisory: it never changes the decision reviewWeek makes", () => {
+    const base = { sessions: easyWeek, keySession: easyWeek[2]!, keyMatchesAnyDay: true };
+    const actualRuns = [
+      { day: 0, distanceKm: 3 },
+      { day: 2, distanceKm: 3 },
+      { day: 6, distanceKm: 6 },
+    ];
+    // reviewWeek has no intensity input at all — that separation is the guarantee.
+    expect(reviewWeek({ ...base, actualRuns }).decision).toBe("PROCEED");
+  });
+});
+
