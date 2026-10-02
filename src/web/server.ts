@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { connect } from "../db.js";
 import { layout } from "./layout.js";
 import { RACE, daysToRace } from "../lib/race.js";
+import { dateInTimeZone } from "../lib/time.js";
 import { runRefresh, SYNC_ONLY_STEPS } from "../pipeline/refresh.js";
 import {
   allRaces,
@@ -21,6 +22,7 @@ import {
   weeklyRunVolume,
   zoneReport,
   checkinActivities,
+  loadMilestones,
 } from "./queries.js";
 import { currentWeekIsComplete, reviewCutoffForReplan } from "../plan/context.js";
 import { raceTrajectory } from "../deterministic/trajectory.js";
@@ -231,7 +233,7 @@ async function route(path: string): Promise<string | null> {
   const coachingWeek = reviewCutoffForReplan(now);
   switch (path) {
     case "/": {
-      const [predictions, fitness, snapshot, latest, races, plan, checkin] = await Promise.all([
+      const [predictions, fitness, snapshot, latest, races, plan, checkin, milestones] = await Promise.all([
         livePredictions(sql),
         latestFitness(sql),
         recentSnapshot(sql, 28),
@@ -239,6 +241,7 @@ async function route(path: string): Promise<string | null> {
         allRaces(sql),
         latestPlan(sql, coachingWeek),
         checkinActivities(sql, 10),
+        loadMilestones(sql, dateInTimeZone(now, dashboardTz())),
       ]);
       return layout(
         "lets-run · now",
@@ -252,6 +255,7 @@ async function route(path: string): Promise<string | null> {
           races,
           plan,
           checkin,
+          milestones,
           now,
           tz: dashboardTz(),
         }),

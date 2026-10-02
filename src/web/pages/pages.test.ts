@@ -513,3 +513,59 @@ describe("renderWeek — what each run actually was", () => {
   });
 });
 
+describe("renderNow — milestones", () => {
+  const milestones = {
+    longRun: { km: 6.78, date: "2026-10-01", longestSince: "2025-10-22" },
+    streak: { current: 0, best: 1, target: 12, includesThisWeek: false },
+    unlock: { unlocked: false, neededKm: 7.0325, remainingKm: 0.2525 },
+    threshold: {
+      thresholdHr: 177,
+      source: "percent" as const,
+      percentHr: 177,
+      lowerBound: null,
+      efforts: [{ durationS: 1200, avgHr: 174.8, paceSecPerKm: 345, drift: 0.024, date: "2026-10-01" }],
+      effortsNeeded: 1,
+    },
+  };
+  const paused = {
+    predictedAt: new Date("2026-10-01T00:00:00Z"),
+    predictedTimeS: 6300,
+    intervalP10S: null,
+    intervalP90S: null,
+    predictor: "vdot-ctl-v1",
+    reliable: false,
+    reliabilityReason: "your longest recent run is 6.8km",
+  };
+
+  it("renders each milestone as a claim the data supports", () => {
+    const html = renderNow(nowData({ milestones, latestPrediction: paused }));
+    expect(html).toContain("Your longest run since Oct 22, 2025");
+    expect(html).toContain("0 <span>of 12</span>");
+    expect(html).toContain("0.25 km to go");
+    expect(html).toContain("at least this high");
+    expect(html).toContain("One more sustained effort");
+  });
+
+  it("never claims improvement from a single run", () => {
+    const html = renderNow(nowData({ milestones, latestPrediction: paused }));
+    for (const word of ["stronger", "faster", "improved", "más fuerte", "mejoró"]) {
+      expect(html.toLowerCase()).not.toContain(word);
+    }
+  });
+
+  it("says what the paused estimate is waiting on, instead of a dead end", () => {
+    const html = renderNow(nowData({ milestones, latestPrediction: paused }));
+    expect(html).toContain("unlocks at a 7.03 km run (0.25 km to go)");
+    expect(html).not.toContain("build a running base to unlock it");
+  });
+
+  it("hides the threshold card when there is no sustained effort to report", () => {
+    const html = renderNow(nowData({ milestones: { ...milestones, threshold: { ...milestones.threshold, efforts: [], effortsNeeded: 2 } } }));
+    expect(html).not.toContain("Threshold evidence");
+  });
+
+  it("renders no milestones section when none were loaded", () => {
+    expect(renderNow(nowData())).not.toContain("milestones-heading");
+  });
+});
+

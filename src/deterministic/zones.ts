@@ -11,6 +11,13 @@
 export interface HrProfile {
   hrMax: number;
   hrRest: number;
+  /**
+   * Threshold HR from sustained-effort evidence (thresholdEvidence.ts). When absent the
+   * percentage rule applies. It moves the threshold band only — the easy ceiling stays
+   * a share of max, because every piece of evidence comes from HARD efforts and says
+   * nothing about where easy running ends.
+   */
+  thresholdHr?: number;
 }
 
 export interface HrZones {
@@ -27,10 +34,18 @@ export const EASY_CEILING_PCT = 0.79;
 export const THRESHOLD_PCT = 0.88;
 
 export function hrZones(p: HrProfile): HrZones {
+  const easyCeiling = Math.round(p.hrMax * EASY_CEILING_PCT);
+  const percentThreshold = Math.round(p.hrMax * THRESHOLD_PCT);
+  // A supplied threshold must still sit above the easy ceiling, or the band ladder
+  // collapses (moderate would have zero width) and every classifier downstream breaks.
+  const threshold =
+    p.thresholdHr != null && Number.isFinite(p.thresholdHr)
+      ? Math.max(Math.round(p.thresholdHr), easyCeiling + 1)
+      : percentThreshold;
   return {
     easyFloor: Math.round(p.hrMax * EASY_FLOOR_PCT),
-    easyCeiling: Math.round(p.hrMax * EASY_CEILING_PCT),
-    threshold: Math.round(p.hrMax * THRESHOLD_PCT),
+    easyCeiling,
+    threshold,
   };
 }
 

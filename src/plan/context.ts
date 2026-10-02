@@ -1,7 +1,8 @@
 import type { Sql } from "../db.js";
 import type { PlanContext } from "./generate.js";
 import { trainingPaces, vdotFromRace } from "../deterministic/vdot.js";
-import { hrZones, median, resolveHrMax } from "../deterministic/zones.js";
+import { hrZones, median } from "../deterministic/zones.js";
+import { loadHrProfile } from "./intensity.js";
 import { selectTrainingFocus, selectTrainingPhase } from "../deterministic/trainingPhase.js";
 import { raceTrajectory } from "../deterministic/trajectory.js";
 import { RACE, daysToRace } from "../lib/race.js";
@@ -99,14 +100,10 @@ export async function buildPlanContext(sql: Sql): Promise<PlanContext> {
     (r) => Date.parse(`${dateOnly(r.race_date)}T00:00:00Z`) >= freshAnchorCutoff,
   );
 
-  // HR ceiling for easy running, from observed max HR.
-  const hrRow = await sql<{ hr_max: number | null }[]>`
-    select max(max_hr) as hr_max from activities where max_hr is not null`;
-  const observedHrMax = hrRow[0]?.hr_max ?? null;
-  // Keep prescription consistent with the load model: reject implausible sensor
-  // spikes rather than turning one bad sample into an unsafe easy-HR ceiling.
-  const hrMax = observedHrMax == null ? null : resolveHrMax(observedHrMax);
-  const zones = hrMax ? hrZones({ hrMax, hrRest: Number(process.env.ATHLETE_HR_REST ?? 55) }) : null;
+  // HR zones from the single shared profile (implausible max-HR spikes are rejected
+  // there, and a measured threshold is applied there once the evidence bar is met).
+  const hrProfile = await loadHrProfile(sql);
+  const zones = hrProfile ? hrZones(hrProfile) : null;
 
   // Observed easy pace: what pace does he ACTUALLY run at easy heart rate, recently?
   // This reflects CURRENT fitness. A peak-VDOT-derived pace does not — prescribing it

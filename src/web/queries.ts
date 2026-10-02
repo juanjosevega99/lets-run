@@ -1,6 +1,18 @@
 import type { Sql } from "../db.js";
 import { dateOnly } from "../lib/time.js";
-import { hrBands, median, resolveHrMax, type HrBand } from "../deterministic/zones.js";
+import { hrBands, median, type HrBand } from "../deterministic/zones.js";
+import { loadHrProfile, loadThresholdEstimate } from "../plan/intensity.js";
+import {
+  consistencyStreak,
+  estimateUnlock,
+  longRunMilestone,
+  type EstimateUnlock,
+  type LongRunMilestone,
+  type Streak,
+} from "../deterministic/milestones.js";
+import type { ThresholdEstimate } from "../deterministic/thresholdEvidence.js";
+import { RELIABILITY_MAX_EXTRAPOLATION } from "../predict/reliability.js";
+import { RACE } from "../lib/race.js";
 import { accumulateZoneTime, emptyZoneTotals, type ZoneTotals } from "../deterministic/zoneTime.js";
 import type {
   GymDifficulty,
@@ -215,6 +227,37 @@ export async function checkinActivities(sql: Sql, days: number): Promise<Checkin
   }));
 }
 
+export interface MilestoneData {
+  longRun: LongRunMilestone | null;
+  streak: Streak;
+  unlock: EstimateUnlock;
+  threshold: ThresholdEstimate | null;
+}
+
+/**
+ * Everything the Now page's milestones need. Run rows are tiny (date + km), so the
+ * whole history is fetched: "longest since <date>" has to be able to look back as far
+ * as the athlete's last longer run, which for a rebuild can be a year.
+ */
+export async function loadMilestones(sql: Sql, today: string): Promise<MilestoneData> {
+  const tz = dashboardTz();
+  const [runs, weeks, longest, profile] = await Promise.all([
+    sql<{ date: string; km: number }[]>`
+      select (start_date at time zone ${tz})::date::text as date, distance_m / 1000.0 as km
+      from activities where sport_type = any(${RUN_TYPES}) and distance_m > 0
+      order by start_date`,
+    weeklyRunVolume(sql, 26),
+    longestRunKm(sql, 30),
+    loadHrProfile(sql),
+  ]);
+  return {
+    longRun: longRunMilestone(runs.map((r) => ({ date: r.date, km: Number(r.km) })), today),
+    streak: consistencyStreak(weeks.map((w) => ({ weekStart: w.weekStart, runs: w.runs }))),
+    unlock: estimateUnlock(longest ?? 0, RACE.distanceM / 1000, RELIABILITY_MAX_EXTRAPOLATION),
+    threshold: profile ? await loadThresholdEstimate(sql, profile.hrMax) : null,
+  };
+}
+
 /** Longest single run in the last N days, in km. Null when there is none. */
 export async function longestRunKm(sql: Sql, days: number): Promise<number | null> {
   const rows = await sql<{ longest: number | null }[]>`
@@ -362,6 +405,8 @@ export interface PredictionRow {
   /** False when the estimate was gated for having no current-shape anchor. Older rows
    *  (no flag) default to reliable so history is not rewritten retroactively. */
   reliable: boolean;
+  /** Why an estimate was withheld — the gate's own words. Null when shown. */
+  reliabilityReason?: string | null;
 }
 
 /** Live (non-backtest) predictions, oldest first. Empty until F1+F2 exist. */
@@ -375,9 +420,11 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
       predictor: string;
       interval_error_n: number | null;
       reliable: boolean;
+      reliability_reason: string | null;
     }[]
   >`
     select predicted_at, predicted_time_s, interval_p10_s, interval_p90_s, predictor,
+           context->>'reliability_reason' as reliability_reason,
            case when context->>'interval_error_n' ~ '^[0-9]+$'
                 then (context->>'interval_error_n')::int end as interval_error_n,
            (context->>'reliable') is distinct from 'false' as reliable
@@ -397,6 +444,7 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
     predictor: r.predictor,
     intervalSampleSize: r.interval_error_n,
     reliable: r.reliable,
+    reliabilityReason: r.reliable ? null : r.reliability_reason,
   }));
 }
 
@@ -425,12 +473,10 @@ export interface ZoneReport {
  * layer stays a dumb fetch, per this file's contract.
  */
 export async function zoneReport(sql: Sql, limit = 10): Promise<ZoneReport | null> {
-  const [hrRow] = await sql<{ hr_max: number | null }[]>`
-    select max(max_hr) as hr_max from activities where max_hr is not null`;
-  if (hrRow?.hr_max == null) return null;
-
-  const hrMax = resolveHrMax(hrRow.hr_max);
-  const bands = hrBands({ hrMax, hrRest: Number(process.env.ATHLETE_HR_REST ?? 55) });
+  const profile = await loadHrProfile(sql);
+  if (profile == null) return null;
+  const hrMax = profile.hrMax;
+  const bands = hrBands(profile);
 
   const rows = await sql<
     {

@@ -2,7 +2,7 @@ import { esc } from "../html.js";
 import { dateInTimeZone, formatDuration, formatPace } from "../../lib/time.js";
 import { RACE } from "../../lib/race.js";
 import { estimateInjuryRisk } from "../../deterministic/injuryRisk.js";
-import type { CheckinActivity, FitnessRow, PlanRow, PredictionRow, RaceRow, RecentSnapshot } from "../queries.js";
+import type { CheckinActivity, FitnessRow, MilestoneData, PlanRow, PredictionRow, RaceRow, RecentSnapshot } from "../queries.js";
 import { pendingRunCheckins, renderCheckinPrompt } from "./checkin.js";
 
 export interface NowData {
@@ -14,6 +14,7 @@ export interface NowData {
   races: RaceRow[];
   plan: PlanRow | null;
   checkin: CheckinActivity[];
+  milestones?: MilestoneData;
   now: Date;
   tz: string;
 }
@@ -55,7 +56,7 @@ export function renderNow(d: NowData): string {
       <div class="goal-time">${formatDuration(RACE.targetTimeS)}</div>
       <div class="goal-label">${formatPace(RACE.distanceM, RACE.targetTimeS)} average pace</div>
       <div class="hero-metrics">
-        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${showEstimate ? formatDuration(p!.predictedTimeS) : "Not enough recent running"}</strong>${p != null && !p.reliable ? `<small>Estimate paused — build a running base to unlock it</small>` : ""}</div>
+        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${showEstimate ? formatDuration(p!.predictedTimeS) : "Not enough recent running"}</strong>${p != null && !p.reliable ? `<small>${esc(pausedReason(p, d.milestones))}</small>` : ""}</div>
         <div class="hero-metric"><span>Gap</span><strong>${gapLabel}</strong></div>
         <div class="hero-metric"><span>Current focus</span><strong>${esc(plan.phase)}</strong></div>
       </div>
@@ -63,6 +64,8 @@ export function renderNow(d: NowData): string {
   </section>
 
   ${renderCheckinPrompt(pendingRunCheckins(d.checkin), "/")}
+
+  ${d.milestones ? renderMilestones(d.milestones, p) : ""}
 
   <section aria-labelledby="next-heading">
     <div class="section-heading">
@@ -143,6 +146,89 @@ function summarizePlan(plan: PlanRow | null, now: Date, tz: string): PlanSummary
     qualityCount: runs.filter((session) => session.intensity === "high").length,
     restDay: rest ? DAY_NAMES[rest.day] ?? null : null,
   };
+}
+
+/**
+ * The paused-estimate line used to say "build a running base to unlock it" whatever
+ * the reason. The gate always knew exactly what was missing — usually one distance —
+ * so say that: a target is actionable, a dead end is not.
+ */
+function pausedReason(p: PredictionRow, m: MilestoneData | undefined): string {
+  if (m && !m.unlock.unlocked) {
+    return `Estimate paused — unlocks at a ${m.unlock.neededKm.toFixed(2)} km run (${m.unlock.remainingKm.toFixed(2)} km to go)`;
+  }
+  return p.reliabilityReason ? `Estimate paused — ${p.reliabilityReason}` : "Estimate paused — build a running base to unlock it";
+}
+
+const SHORT_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+const fmtDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
+const fmtPace = (secPerKm: number | null) =>
+  secPerKm == null ? "" : `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, "0")}/km`;
+
+/**
+ * Milestones. Every line is a claim the data supports as stated: "longest SINCE a
+ * date", "at least" for a threshold, "N of 12" for the goal that actually decides this
+ * athlete's race. Nothing here says "faster" or "stronger" — one session is far more
+ * often a first measurement than an improvement.
+ */
+function renderMilestones(m: MilestoneData, p: PredictionRow | null): string {
+  const cards: string[] = [];
+
+  if (m.longRun) {
+    cards.push(`<article class="milestone panel">
+      <p class="eyebrow">Long run</p>
+      <strong class="milestone-value">${m.longRun.km.toFixed(2)} km</strong>
+      <p>${m.longRun.longestSince ? `Your longest run since ${esc(fmtDate(m.longRun.longestSince))}.` : "Your longest run on record."} ${esc(fmtDate(m.longRun.date))}.</p>
+    </article>`);
+  }
+
+  const s = m.streak;
+  cards.push(`<article class="milestone panel">
+    <p class="eyebrow">3-run weeks in a row</p>
+    <strong class="milestone-value">${s.current} <span>of ${s.target}</span></strong>
+    <p>${
+      s.current === 0
+        ? "Starts with your next week of three runs. This is the goal that decides the race."
+        : `${s.includesThisWeek ? "Including this week. " : ""}Best in the last six months: ${s.best}.`
+    }</p>
+  </article>`);
+
+  const reliable = p?.reliable === true;
+  cards.push(`<article class="milestone panel">
+    <p class="eyebrow">Race estimate</p>
+    <strong class="milestone-value">${
+      reliable ? "Unlocked" : m.unlock.unlocked ? "Distance cleared" : `${m.unlock.remainingKm.toFixed(2)} km to go`
+    }</strong>
+    <p>${
+      reliable
+        ? "Recent running now anchors a current-shape estimate."
+        : m.unlock.unlocked
+          ? esc(p?.reliabilityReason ? `Still paused: ${p.reliabilityReason}.` : "Waiting on the next update.")
+          : `A ${m.unlock.neededKm.toFixed(2)} km run unlocks it — any closer and the estimate would be guessing at a distance you have not run.`
+    }</p>
+  </article>`);
+
+  const t = m.threshold;
+  if (t && t.efforts.length > 0) {
+    const top = t.efforts[0]!;
+    const effort = `${Math.round(top.durationS / 60)} min steady at HR ${Math.round(top.avgHr)}${top.paceSecPerKm ? `, ${fmtPace(top.paceSecPerKm)}` : ""}${top.date ? ` (${fmtDate(top.date)})` : ""}`;
+    const body =
+      t.effortsNeeded > 0
+        ? `${effort}. Your threshold is at least this high. ${t.effortsNeeded === 1 ? "One more sustained effort" : `${t.effortsNeeded} more sustained efforts`} and your zones update from what you have actually held — until then they use the standard 88%-of-max rule (${t.percentHr}).`
+        : t.source === "measured"
+          ? `Two sustained efforts held at least ${t.lowerBound} — above the standard rule's ${t.percentHr}, so your zones now use ${t.thresholdHr}.`
+          : `Two sustained efforts held at least ${t.lowerBound}, consistent with your current threshold of ${t.thresholdHr}. No change needed.`;
+    cards.push(`<article class="milestone panel">
+      <p class="eyebrow">Threshold evidence</p>
+      <strong class="milestone-value">≥ ${Math.round(t.lowerBound ?? top.avgHr)} <span>bpm</span></strong>
+      <p>${esc(body)}</p>
+    </article>`);
+  }
+
+  return `<section class="section-block" aria-labelledby="milestones-heading">
+    <div class="section-heading"><div><p class="eyebrow">Earned</p><h2 id="milestones-heading">Milestones</h2></div><p class="section-copy">Measured, not inferred. A single run is a measurement, not a verdict.</p></div>
+    <div class="milestone-grid">${cards.join("")}</div>
+  </section>`;
 }
 
 function renderNextRun(summary: PlanSummary): string {

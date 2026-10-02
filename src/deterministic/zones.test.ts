@@ -43,3 +43,22 @@ describe("median", () => {
     expect(median([])).toBeNull();
   });
 });
+
+describe("hrZones — a measured threshold", () => {
+  it("uses it in place of the percentage rule", () => {
+    expect(hrZones({ hrMax: 201, hrRest: 55, thresholdHr: 182 }).threshold).toBe(182);
+  });
+
+  it("leaves the easy ceiling alone — hard-effort evidence says nothing about easy running", () => {
+    expect(hrZones({ hrMax: 201, hrRest: 55, thresholdHr: 182 }).easyCeiling).toBe(159);
+  });
+
+  it("can never collapse the band ladder below the easy ceiling", () => {
+    expect(hrZones({ hrMax: 201, hrRest: 55, thresholdHr: 140 }).threshold).toBe(160);
+  });
+
+  it("is unchanged without one", () => {
+    expect(hrZones({ hrMax: 201, hrRest: 55 }).threshold).toBe(177);
+  });
+});
+

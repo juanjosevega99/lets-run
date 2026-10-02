@@ -1,18 +1,77 @@
 import type { Sql } from "../db.js";
-import { hrBands, resolveHrMax, type HrProfile } from "../deterministic/zones.js";
+import { hrBands, hrZones, resolveHrMax, type HrProfile } from "../deterministic/zones.js";
+import {
+  estimateThreshold,
+  findSteadyEffort,
+  STEADY_WINDOW_S,
+  type SteadyEffort,
+  type ThresholdEstimate,
+} from "../deterministic/thresholdEvidence.js";
 import {
   classifyFromAverage,
   classifyRunIntensity,
   type RunIntensityResult,
 } from "../deterministic/runIntensity.js";
 
-/** The athlete's HR profile, resolved exactly as the planner resolves it. */
+/** How far back sustained efforts count as evidence about current threshold. */
+export const THRESHOLD_EVIDENCE_DAYS = 56;
+
+/**
+ * Threshold from sustained-effort evidence, for an already-resolved max HR.
+ *
+ * Only runs that could possibly contain a 20-minute effort above the easy ceiling are
+ * fetched — long enough, with a max HR above it — so this stays cheap enough to run on
+ * a page load rather than needing its own table.
+ */
+export async function loadThresholdEstimate(sql: Sql, hrMax: number): Promise<ThresholdEstimate> {
+  const easyCeiling = hrZones({ hrMax, hrRest: 0 }).easyCeiling;
+  const rows = await sql<
+    {
+      id: string | number;
+      date: string;
+      time_s: number[] | null;
+      distance_m: number[] | null;
+      heartrate: (number | null)[] | null;
+    }[]
+  >`
+    select a.id, a.start_date::date::text as date, s.time_s, s.distance_m, s.heartrate
+    from activities a join activity_streams s on s.activity_id = a.id
+    where a.sport_type ilike '%run%'
+      and a.start_date >= now() - make_interval(days => ${THRESHOLD_EVIDENCE_DAYS})
+      and a.moving_time_s >= ${STEADY_WINDOW_S}
+      and a.max_hr > ${easyCeiling}
+  `;
+  const efforts: SteadyEffort[] = [];
+  for (const r of rows) {
+    if (!r.time_s || !r.distance_m || !r.heartrate) continue;
+    const effort = findSteadyEffort(
+      { timeS: r.time_s, distanceM: r.distance_m, heartrate: r.heartrate },
+      easyCeiling,
+    );
+    if (effort) efforts.push({ ...effort, activityId: Number(r.id), date: r.date });
+  }
+  return estimateThreshold(hrMax, efforts);
+}
+
+/**
+ * The athlete's HR profile — the ONE place it is built. The planner, the weekly review,
+ * the intensity labels and the zones page all used to resolve it separately, so a
+ * measured threshold could not have reached them all; now it does by construction.
+ */
 export async function loadHrProfile(sql: Sql): Promise<HrProfile | null> {
   const rows = await sql<{ hr_max: number | null }[]>`
     select max(max_hr) as hr_max from activities where max_hr is not null`;
   const observed = rows[0]?.hr_max;
   if (observed == null) return null;
-  return { hrMax: resolveHrMax(Number(observed)), hrRest: Number(process.env.ATHLETE_HR_REST ?? 55) };
+  const hrMax = resolveHrMax(Number(observed));
+  const threshold = await loadThresholdEstimate(sql, hrMax);
+  return {
+    hrMax,
+    hrRest: Number(process.env.ATHLETE_HR_REST ?? 55),
+    // Only a MEASURED threshold is passed on; otherwise hrZones applies the same
+    // percentage rule it always has, so nothing changes until evidence exists.
+    ...(threshold.source === "measured" ? { thresholdHr: threshold.thresholdHr } : {}),
+  };
 }
 
 /**

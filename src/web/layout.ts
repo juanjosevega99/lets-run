@@ -144,6 +144,11 @@ export function layout(title: string, activePath: string, body: string): string 
   .section-block { margin-top: 3.2rem; }
   .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1.25rem; margin-bottom: 1.1rem; }
   .section-heading p { max-width: 38rem; margin: 0; }
+  .milestone-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; }
+  .milestone { padding: 1.1rem 1.2rem; display: grid; gap: .35rem; align-content: start; }
+  .milestone p { margin: 0; }
+  .milestone-value { font-size: 1.7rem; line-height: 1.1; }
+  .milestone-value span { font-size: .95rem; font-weight: 600; color: var(--muted); }
   .coach-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(270px, .75fr); gap: 1rem; }
   .next-session, .week-glance, .chart-panel, .goal-strip, .coach-note { padding: clamp(1.25rem, 3vw, 1.8rem); }
   .next-session { position: relative; overflow: hidden; }
