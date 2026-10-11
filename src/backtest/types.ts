@@ -57,6 +57,12 @@ export interface PredictionResult {
   timeS: number;
   /** Optional short note about how the prediction was formed (shown in the report). */
   note?: string;
+  /**
+   * Date of the observation the prediction is extrapolated FROM. A current-shape claim
+   * is only as current as this: the live gate refuses to call a years-old anchor
+   * "estimated today", however recent the training load it is scaled by.
+   */
+  anchorDate?: Date;
 }
 
 export interface Predictor {

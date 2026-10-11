@@ -569,3 +569,39 @@ describe("renderNow — milestones", () => {
   });
 });
 
+describe("renderNow — current-shape bound", () => {
+  const withheld = {
+    predictedAt: new Date("2026-10-11T00:00:00Z"),
+    predictedTimeS: 6139,
+    intervalP10S: null,
+    intervalP90S: null,
+    predictor: "vdot-ctl-v1",
+    reliable: false,
+    reliabilityReason: "the model is anchored on a race from 88 months ago",
+    boundTimeS: 7787,
+    boundEffortDate: "2026-10-01",
+    boundEffortPaceSecPerKm: 345,
+    boundEffortDurationS: 1200,
+  };
+
+  it("shows what recent evidence supports, marked as a bound", () => {
+    const html = renderNow(nowData({ latestPrediction: withheld }));
+    expect(html).toContain("≤ 2:09:47");
+    expect(html).toContain("No slower than this on current evidence");
+    expect(html).toContain("20 min steady at 5:45/km");
+  });
+
+  it("states the gap as an upper limit, never as a fact", () => {
+    expect(renderNow(nowData({ latestPrediction: withheld }))).toContain("at most 32:33 to close");
+  });
+
+  it("never shows the withheld stale number", () => {
+    expect(renderNow(nowData({ latestPrediction: withheld }))).not.toContain("1:42:19");
+  });
+
+  it("falls back to the paused message when there is no bound either", () => {
+    const html = renderNow(nowData({ latestPrediction: { ...withheld, boundTimeS: null } }));
+    expect(html).toContain("Estimate paused");
+  });
+});
+

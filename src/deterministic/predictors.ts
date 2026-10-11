@@ -23,7 +23,7 @@ const REFERENCE_WINDOW_MS = 24 * 30.44 * 86_400_000; // ~24 months
 export const TRAIL_SURFACE_FACTOR = 1.04;
 const DETRAINING_EXPONENT = 0.06;
 
-function terrainFactor(req: PredictionRequest): number {
+export function terrainFactor(req: PredictionRequest): number {
   const grade = courseFactor(req.distanceM, req.elevationGainM ?? 0);
   const surface = req.terrain === "trail" ? TRAIL_SURFACE_FACTOR : 1;
   return grade * surface;
@@ -81,7 +81,8 @@ export const vdotCtlPredictor: Predictor = {
 
     return {
       timeS: flat * detraining * terrainFactor(req),
-      note: `VDOT ${vdot.toFixed(1)}, CTL ${ctlRef.toFixed(0)}→${ctlNow.toFixed(0)}, ×${detraining.toFixed(3)}`,
+      note: `VDOT ${vdot.toFixed(1)} (${ref.raceDate.toISOString().slice(0, 10)}), CTL ${ctlRef.toFixed(0)}→${ctlNow.toFixed(0)}, ×${detraining.toFixed(3)}`,
+      anchorDate: ref.raceDate,
     };
   },
 };

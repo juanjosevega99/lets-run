@@ -6,6 +6,9 @@ import { RACE, daysToRace } from "../lib/race.js";
 import { dateInTimeZone, formatDuration } from "../lib/time.js";
 import type { Log } from "../strava/sync.js";
 import { estimateReliability } from "./reliability.js";
+import { loadHrProfile, loadThresholdEstimate } from "../plan/intensity.js";
+import { currentShapeBound } from "../deterministic/currentShape.js";
+import { terrainFactor } from "../deterministic/predictors.js";
 
 export const DEFAULT_LIVE_MODEL = "vdot-ctl-v1";
 export const DEFAULT_COURSE_GAIN_M = 250;
@@ -37,12 +40,13 @@ export async function generateLivePrediction(
   const races = await loadRaces(sql);
   const cutoff = new Date();
   const history = await loadHistory(sql, cutoff, races);
-  const result = await predictor.predict(history, {
+  const request = {
     distanceM: RACE.distanceM,
-    terrain: "trail",
+    terrain: "trail" as const,
     elevationGainM: gain,
     raceDate: new Date(`${RACE.dateIso}T00:00:00Z`),
-  });
+  };
+  const result = await predictor.predict(history, request);
 
   const errors = await backtestErrors(sql, predictor.name);
   let p10: number | null = null;
@@ -58,7 +62,18 @@ export async function generateLivePrediction(
   // best-ever race and reports an over-optimistic time. Store the raw estimate for the
   // record, but mark it not-to-be-shown-as-confident and drop its (meaningless) band.
   const tz = process.env.DASHBOARD_TZ ?? "America/Bogota";
-  const reliability = await currentShapeReliability(sql, tz);
+  const anchorAgeDays =
+    result.anchorDate != null ? Math.floor((cutoff.getTime() - result.anchorDate.getTime()) / 86_400_000) : null;
+  const reliability = await currentShapeReliability(sql, tz, anchorAgeDays);
+
+  // The honest current-shape signal: a bound from recent steady efforts. It is computed
+  // whatever the old model says, so the dashboard has something true to show while the
+  // anchored estimate is withheld.
+  const profile = await loadHrProfile(sql);
+  const evidence = profile ? await loadThresholdEstimate(sql, profile.hrMax) : null;
+  const bound = evidence
+    ? currentShapeBound(evidence.efforts, RACE.distanceM, terrainFactor(request))
+    : null;
   const storedP10 = reliability.reliable ? p10 : null;
   const storedP90 = reliability.reliable ? p90 : null;
 
@@ -76,6 +91,13 @@ export async function generateLivePrediction(
               reliable: reliability.reliable,
               reliability_reason: reliability.reason,
               note: result.note ?? null,
+              anchor_date: result.anchorDate ? result.anchorDate.toISOString().slice(0, 10) : null,
+              anchor_age_days: anchorAgeDays,
+              bound_time_s: bound?.timeAtMostS ?? null,
+              bound_vdot: bound?.vdotAtLeast ?? null,
+              bound_effort_date: bound?.effort.date ?? null,
+              bound_effort_pace_s_per_km: bound?.effort.paceSecPerKm ?? null,
+              bound_effort_duration_s: bound?.effort.durationS ?? null,
             })})
   `;
 
@@ -96,12 +118,26 @@ export async function generateLivePrediction(
     );
   } else {
     log(`estimate WITHHELD: ${reliability.reason}`);
-    log(`(raw model output ${formatDuration(result.timeS)} anchors on an old race; not trustworthy until recent running exists)`);
+    log(`(raw model output ${formatDuration(result.timeS)} is optimistic: ${result.note ?? "old anchor"})`);
+  }
+  if (bound) {
+    const pace = bound.effort.paceSecPerKm!;
+    log(
+      `current-shape bound: no slower than ${formatDuration(bound.timeAtMostS)} on this course ` +
+        `(VDOT ≥ ${bound.vdotAtLeast.toFixed(1)}, from ${Math.round(bound.effort.durationS / 60)} min steady at ` +
+        `${Math.floor(pace / 60)}:${String(Math.round(pace % 60)).padStart(2, "0")}/km on ${bound.effort.date})`,
+    );
+  } else {
+    log("current-shape bound: no steady effort in the last 8 weeks to bound current shape");
   }
 }
 
 /** Reads the current running CTL and recent-running signal, then applies the gate. */
-async function currentShapeReliability(sql: Sql, tz: string): Promise<{ reliable: boolean; reason: string }> {
+async function currentShapeReliability(
+  sql: Sql,
+  tz: string,
+  anchorAgeDays: number | null,
+): Promise<{ reliable: boolean; reason: string }> {
   const [fit] = await sql<{ ctl: number | null }[]>`select ctl from fitness_state order by day desc limit 1`;
   const [recent] = await sql<
     { runs_28d: number; days_since_last_run: number | null; longest_90d_m: number | null }[]
@@ -117,6 +153,7 @@ async function currentShapeReliability(sql: Sql, tz: string): Promise<{ reliable
     daysSinceLastRun: recent?.days_since_last_run ?? null,
     longestRecentRunM: recent?.longest_90d_m ?? null,
     raceDistanceM: RACE.distanceM,
+    anchorAgeDays,
   });
 }
 

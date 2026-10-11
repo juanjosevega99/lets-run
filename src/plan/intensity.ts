@@ -32,9 +32,10 @@ export async function loadThresholdEstimate(sql: Sql, hrMax: number): Promise<Th
       time_s: number[] | null;
       distance_m: number[] | null;
       heartrate: (number | null)[] | null;
+      altitude_m: (number | null)[] | null;
     }[]
   >`
-    select a.id, a.start_date::date::text as date, s.time_s, s.distance_m, s.heartrate
+    select a.id, a.start_date::date::text as date, s.time_s, s.distance_m, s.heartrate, s.altitude_m
     from activities a join activity_streams s on s.activity_id = a.id
     where a.sport_type ilike '%run%'
       and a.start_date >= now() - make_interval(days => ${THRESHOLD_EVIDENCE_DAYS})
@@ -48,9 +49,38 @@ export async function loadThresholdEstimate(sql: Sql, hrMax: number): Promise<Th
       { timeS: r.time_s, distanceM: r.distance_m, heartrate: r.heartrate },
       easyCeiling,
     );
-    if (effort) efforts.push({ ...effort, activityId: Number(r.id), date: r.date });
+    if (effort) {
+      efforts.push({
+        ...effort,
+        activityId: Number(r.id),
+        date: r.date,
+        netElevationM: netElevation(r.altitude_m, effort.startIndex, effort.endIndex),
+      });
+    }
   }
   return estimateThreshold(hrMax, efforts);
+}
+
+/**
+ * Net climb (+) or descent (−) across a window, from a 5-sample median at each end so
+ * one noisy altitude sample cannot manufacture a slope. Undefined without altitude.
+ */
+function netElevation(
+  altitude: (number | null)[] | null,
+  start: number | undefined,
+  end: number | undefined,
+): number | undefined {
+  if (!altitude || start == null || end == null) return undefined;
+  const around = (i: number) => {
+    const xs = altitude
+      .slice(Math.max(0, i - 2), i + 3)
+      .filter((v): v is number => v != null && Number.isFinite(v))
+      .sort((a, b) => a - b);
+    return xs.length > 0 ? xs[Math.floor(xs.length / 2)]! : null;
+  };
+  const a = around(start);
+  const b = around(end);
+  return a == null || b == null ? undefined : b - a;
 }
 
 /**

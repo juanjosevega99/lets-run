@@ -63,7 +63,8 @@ export function renderTrajectory(d: TrajectoryData): string {
   const fourWeekAvg = completedWeeks.length > 0 ? completedWeeks.reduce((sum, week) => sum + week.km, 0) / completedWeeks.length : null;
   const latest = d.predictions.at(-1) ?? null;
   const latestPrediction = latest != null && latest.reliable ? latest : null;
-  const gapS = latestPrediction ? latestPrediction.predictedTimeS - RACE.targetTimeS : null;
+  const boundS = !latestPrediction && latest?.boundTimeS != null ? latest.boundTimeS : null;
+  const gapS = latestPrediction ? latestPrediction.predictedTimeS - RACE.targetTimeS : boundS != null ? boundS - RACE.targetTimeS : null;
   const chart = barChart({
     bars: visibleWeeks.map((week) => ({ label: week.weekStart.slice(5), value: week.km })),
     refLine: d.peakAvgKm != null ? { value: d.peakAvgKm, label: `Peak-era avg ${d.peakAvgKm.toFixed(0)} km/wk` } : undefined,
@@ -79,8 +80,8 @@ export function renderTrajectory(d: TrajectoryData): string {
   <section class="goal-strip panel" aria-label="Goal and current shape">
     <div class="goal-copy"><p class="eyebrow">Patagonia 21K</p><h2>Race-day north star</h2><p>${esc(RACE.bracket)} · ${esc(RACE.dateIso)}</p></div>
     <div class="compact-metric"><span>Goal</span><strong>${formatDuration(RACE.targetTimeS)}</strong></div>
-    <div class="compact-metric"><span>Current shape</span><strong>${latestPrediction ? formatDuration(latestPrediction.predictedTimeS) : "—"}</strong></div>
-    <div class="compact-metric"><span>Gap</span><strong>${gapS == null ? "Need recent runs" : gapS <= 0 ? `${formatDuration(-gapS)} ahead` : `${formatDuration(gapS)} to close`}</strong></div>
+    <div class="compact-metric"><span>Current shape</span><strong>${latestPrediction ? formatDuration(latestPrediction.predictedTimeS) : latest?.boundTimeS != null ? `≤ ${formatDuration(latest.boundTimeS)}` : "—"}</strong></div>
+    <div class="compact-metric"><span>Gap</span><strong>${gapS == null ? "Need recent runs" : gapS <= 0 ? `${formatDuration(-gapS)} ahead` : `${boundS != null ? "≤ " : ""}${formatDuration(gapS)} to close`}</strong></div>
   </section>
 
   <section class="section-block" aria-labelledby="volume-heading">

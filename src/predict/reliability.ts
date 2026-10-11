@@ -36,6 +36,18 @@ export const RELIABILITY_CTL_MARGIN = 1.5;
  */
 export const RELIABILITY_MAX_EXTRAPOLATION = 3;
 
+/**
+ * Oldest anchor a CURRENT-shape estimate may rest on.
+ *
+ * Every other guard asks whether recent training is enough to scale an anchor by; none
+ * asked how old the anchor itself was. On 2026-10-11 all four passed and the dashboard
+ * published 1:42:19 "estimated today" — extrapolated from a June 2022 race across a
+ * seven-month layoff, for an athlete whose fresh evidence pointed nearer two hours.
+ * Six months is generous: the P1 backtest found fresh-anchor error ≈ 1.7% within ~120
+ * days and +10…41% beyond.
+ */
+export const RELIABILITY_MAX_ANCHOR_AGE_DAYS = 180;
+
 export interface ReliabilityInput {
   /** Current running CTL (fitness_state), the true un-floored value. Null if unknown. */
   runningCtl: number | null;
@@ -45,6 +57,8 @@ export interface ReliabilityInput {
   longestRecentRunM?: number | null;
   /** Target race distance, metres. Null when unknown (check is skipped). */
   raceDistanceM?: number | null;
+  /** Age of the observation the estimate extrapolates from. Null/absent skips the check. */
+  anchorAgeDays?: number | null;
 }
 
 export interface Reliability {
@@ -79,6 +93,15 @@ export function estimateReliability(x: ReliabilityInput): Reliability {
           `well past where the model holds`,
       };
     }
+  }
+  if (x.anchorAgeDays != null && x.anchorAgeDays > RELIABILITY_MAX_ANCHOR_AGE_DAYS) {
+    const months = Math.round(x.anchorAgeDays / 30.44);
+    return {
+      reliable: false,
+      reason:
+        `the model is anchored on a race from ${months} months ago — that is past fitness ` +
+        `with a load discount, not current shape`,
+    };
   }
   return { reliable: true, reason: "recent running provides a current-shape anchor" };
 }

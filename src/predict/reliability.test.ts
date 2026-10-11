@@ -95,3 +95,34 @@ describe("estimateReliability — CTL must clear the clamp with margin", () => {
     expect(estimateReliability({ ...rest, runningCtl: 8 }).reliable).toBe(true);
   });
 });
+
+describe("estimateReliability — anchor age", () => {
+  const passingEverythingElse = {
+    runningCtl: 13.5,
+    runs28d: 8,
+    daysSinceLastRun: 0,
+    longestRecentRunM: 7120,
+    raceDistanceM: 21097.5,
+  };
+
+  it("withholds an estimate anchored on a years-old race, however good recent training looks", () => {
+    // 2026-10-11: every other guard passed and 1:42:19 was published off a 2019 10K.
+    const r = estimateReliability({ ...passingEverythingElse, anchorAgeDays: 88 * 30.44 });
+    expect(r.reliable).toBe(false);
+    expect(r.reason).toContain("88 months ago");
+  });
+
+  it("accepts a recent anchor", () => {
+    expect(estimateReliability({ ...passingEverythingElse, anchorAgeDays: 60 }).reliable).toBe(true);
+  });
+
+  it("checks age last, so the more actionable reasons still win", () => {
+    const r = estimateReliability({ ...passingEverythingElse, longestRecentRunM: 5000, anchorAgeDays: 3000 });
+    expect(r.reason).toContain("extrapolates");
+  });
+
+  it("skips the check when the anchor date is unknown", () => {
+    expect(estimateReliability({ ...passingEverythingElse }).reliable).toBe(true);
+  });
+});
+

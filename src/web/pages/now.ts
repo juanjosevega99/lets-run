@@ -26,13 +26,16 @@ export function renderNow(d: NowData): string {
   // Only present a confident time when the estimate has a current-shape anchor.
   // An un-anchored estimate extrapolates from an old race and reads far too fast.
   const showEstimate = p != null && p.reliable;
-  const gapS = showEstimate ? p!.predictedTimeS - RACE.targetTimeS : null;
+  // When the anchored estimate is withheld, show what fresh evidence DOES support: a time
+  // he would run no slower than. Its gap is therefore an upper limit, and says so.
+  const bound = !showEstimate && p?.boundTimeS != null ? p.boundTimeS : null;
+  const gapS = showEstimate ? p!.predictedTimeS - RACE.targetTimeS : bound != null ? bound - RACE.targetTimeS : null;
   const gapLabel =
     gapS == null
       ? "Estimate resumes with recent running"
       : gapS <= 0
         ? `${formatDuration(-gapS)} ahead of target`
-        : `${formatDuration(gapS)} to close`;
+        : `${bound != null ? "at most " : ""}${formatDuration(gapS)} to close`;
   const plan = summarizePlan(d.plan, d.now, d.tz);
   const s = d.snapshot;
   const strength = sumSports(s, (sport) => /weight|strength|gym/.test(sport));
@@ -56,7 +59,7 @@ export function renderNow(d: NowData): string {
       <div class="goal-time">${formatDuration(RACE.targetTimeS)}</div>
       <div class="goal-label">${formatPace(RACE.distanceM, RACE.targetTimeS)} average pace</div>
       <div class="hero-metrics">
-        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${showEstimate ? formatDuration(p!.predictedTimeS) : "Not enough recent running"}</strong>${p != null && !p.reliable ? `<small>${esc(pausedReason(p, d.milestones))}</small>` : ""}</div>
+        <div class="hero-metric"><span>Estimated Huemul 21K today</span><strong>${showEstimate ? formatDuration(p!.predictedTimeS) : bound != null ? `≤ ${formatDuration(bound)}` : "Not enough recent running"}</strong>${p != null && !p.reliable ? `<small>${esc(bound != null ? boundNote(p) : pausedReason(p, d.milestones))}</small>` : ""}</div>
         <div class="hero-metric"><span>Gap</span><strong>${gapLabel}</strong></div>
         <div class="hero-metric"><span>Current focus</span><strong>${esc(plan.phase)}</strong></div>
       </div>
@@ -160,6 +163,16 @@ function pausedReason(p: PredictionRow, m: MilestoneData | undefined): string {
   return p.reliabilityReason ? `Estimate paused — ${p.reliabilityReason}` : "Estimate paused — build a running base to unlock it";
 }
 
+/** What the "≤" figure rests on, in one line. */
+function boundNote(p: PredictionRow): string {
+  const pace = p.boundEffortPaceSecPerKm;
+  const effort =
+    pace != null && p.boundEffortDurationS != null
+      ? `${Math.round(p.boundEffortDurationS / 60)} min steady at ${Math.floor(pace / 60)}:${String(Math.round(pace % 60)).padStart(2, "0")}/km${p.boundEffortDate ? ` on ${fmtDate(p.boundEffortDate)}` : ""}`
+      : "a recent steady effort";
+  return `No slower than this on current evidence: ${effort}. A time trial would turn this into an estimate.`;
+}
+
 const SHORT_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const fmtDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
 const fmtPace = (secPerKm: number | null) =>
@@ -197,13 +210,19 @@ function renderMilestones(m: MilestoneData, p: PredictionRow | null): string {
   cards.push(`<article class="milestone panel">
     <p class="eyebrow">Race estimate</p>
     <strong class="milestone-value">${
-      reliable ? "Unlocked" : m.unlock.unlocked ? "Distance cleared" : `${m.unlock.remainingKm.toFixed(2)} km to go`
+      reliable ? "Unlocked" : m.unlock.unlocked ? (p?.boundTimeS != null ? `≤ ${formatDuration(p.boundTimeS)}` : "Distance cleared") : `${m.unlock.remainingKm.toFixed(2)} km to go`
     }</strong>
     <p>${
       reliable
         ? "Recent running now anchors a current-shape estimate."
         : m.unlock.unlocked
-          ? esc(p?.reliabilityReason ? `Still paused: ${p.reliabilityReason}.` : "Waiting on the next update.")
+          ? esc(
+              p?.boundTimeS != null
+                ? `The old model is anchored on a years-old race, so it is withheld. What recent running supports instead: no slower than ${formatDuration(p.boundTimeS)}.`
+                : p?.reliabilityReason
+                  ? `Still paused: ${p.reliabilityReason}.`
+                  : "Waiting on the next update.",
+            )
           : `A ${m.unlock.neededKm.toFixed(2)} km run unlocks it — any closer and the estimate would be guessing at a distance you have not run.`
     }</p>
   </article>`);

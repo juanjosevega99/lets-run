@@ -407,6 +407,14 @@ export interface PredictionRow {
   reliable: boolean;
   /** Why an estimate was withheld — the gate's own words. Null when shown. */
   reliabilityReason?: string | null;
+  /**
+   * Slowest plausible time on today's evidence (a bound from recent steady efforts),
+   * shown when the anchored estimate is withheld. Null when no qualifying effort.
+   */
+  boundTimeS?: number | null;
+  boundEffortDate?: string | null;
+  boundEffortPaceSecPerKm?: number | null;
+  boundEffortDurationS?: number | null;
 }
 
 /** Live (non-backtest) predictions, oldest first. Empty until F1+F2 exist. */
@@ -421,10 +429,18 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
       interval_error_n: number | null;
       reliable: boolean;
       reliability_reason: string | null;
+      bound_time_s: number | null;
+      bound_effort_date: string | null;
+      bound_effort_pace: number | null;
+      bound_effort_duration: number | null;
     }[]
   >`
     select predicted_at, predicted_time_s, interval_p10_s, interval_p90_s, predictor,
            context->>'reliability_reason' as reliability_reason,
+           (context->>'bound_time_s')::float as bound_time_s,
+           context->>'bound_effort_date' as bound_effort_date,
+           (context->>'bound_effort_pace_s_per_km')::float as bound_effort_pace,
+           (context->>'bound_effort_duration_s')::float as bound_effort_duration,
            case when context->>'interval_error_n' ~ '^[0-9]+$'
                 then (context->>'interval_error_n')::int end as interval_error_n,
            (context->>'reliable') is distinct from 'false' as reliable
@@ -445,6 +461,10 @@ export async function livePredictions(sql: Sql): Promise<PredictionRow[]> {
     intervalSampleSize: r.interval_error_n,
     reliable: r.reliable,
     reliabilityReason: r.reliable ? null : r.reliability_reason,
+    boundTimeS: r.bound_time_s,
+    boundEffortDate: r.bound_effort_date,
+    boundEffortPaceSecPerKm: r.bound_effort_pace,
+    boundEffortDurationS: r.bound_effort_duration,
   }));
 }
 

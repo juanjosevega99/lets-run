@@ -49,6 +49,11 @@ export interface SteadyEffort {
   paceSecPerKm: number | null;
   /** (second-half avg − first-half avg) / first-half avg. */
   drift: number;
+  /** Window position in the stream, so callers can inspect what happened inside it. */
+  startIndex?: number;
+  endIndex?: number;
+  /** Net elevation change across the window (m), when the loader had altitude. */
+  netElevationM?: number;
 }
 
 /**
@@ -103,6 +108,8 @@ export function findSteadyEffort(stream: EffortStream, easyCeiling: number): Ste
         avgHr,
         paceSecPerKm: meters > 0 ? (t[end]! - t[start]!) / (meters / 1000) : null,
         drift: (second - first) / first,
+        startIndex: start,
+        endIndex: end,
       };
     }
   }
