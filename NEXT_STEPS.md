@@ -1,6 +1,6 @@
 # Coach v2 — current state and next steps
 
-Updated 2026-09-14 for the Patagonia Running Festival 21K on 2027-04-24.
+Updated 2026-10-11 for the Patagonia Running Festival 21K on 2027-04-24.
 
 > This is the single source of truth for project continuity and priority. Deep
 > implementation details live in `docs/*.md`; they do not maintain a second roadmap.
@@ -27,10 +27,21 @@ The binding constraint remains run *frequency*, not run length. The longest stre
 consecutive weeks with 3+ runs in the last 78 weeks is **8**, ending September 2025; a
 race build needs roughly 29. 44 of those 78 weeks contained any running at all.
 
-The race estimate is still paused, and only one of four reliability guards is holding it:
-the longest run in 30 days (5.80km) makes a 21.1km estimate a 3.6x extrapolation against
-a 3x limit. It unlocks at a **7.03km** run — three long runs away at the +10% session
-guardrail.
+**Update 2026-10-11.** Running CTL 13.5. Training has turned social: hard sessions
+happen with friends (a tempo Oct 1, intervals Oct 3 and Oct 6), the long run happens, and
+the easy run done alone is the one that keeps disappearing — two 2-run weeks in three.
+The week of 2026-09-28 started the 3-run streak (1 of 12); the next week ended it.
+
+The long run reached **7.12 km** on Oct 11, clearing the distance guard. The old
+anchored model then published 1:42:19 — off a 2019 10K. That is now withheld (see P1),
+and the dashboard shows the honest bound instead: **no slower than 2:09:47** on the
+course, from 20 minutes steady at 5:45/km on Oct 1.
+
+Fresh evidence from the hard sessions: speed is not the limiter (1-minute reps at
+3:45–4:15/km, faster than his 2019 10K pace), endurance is. And a chest strap on Oct 6
+peaked at 185 on reps that reached 191 on the wrist three days earlier — so the HR max of
+201 that every zone derives from may be a wrist cadence-lock artifact. Unresolved; the
+strap on every hard session for a few weeks will settle it.
 
 ## First coaching verdict
 
@@ -109,6 +120,17 @@ work matters far more than flat-road fitness.
     (`loadRunDays`, the twin of `loadStrengthDays`) rather than assumed from a template.
 14. Checks its own output against **coaching properties** as well as the S2 validator —
     the tier that asks whether a legal week still makes sense for this athlete.
+15. Replays itself over the whole history (`npm run backtest:coach`): 441 weeks, 0 rule
+    violations, 3 advisory property hits.
+16. Judges runs by what they were: each run is classified easy/moderate/hard from its HR
+    stream; the review records runs that went harder than planned and the week's actual
+    easy share against the 75% floor. Advisory — it never moves the decision.
+17. Syncs on its own (Vercel Cron, daily) and on demand (a button on `/week`) without
+    ever rewriting the plan mid-week; planning stays an explicit act.
+18. Shows milestones worded as claims the data supports — longest run *since* a date,
+    the 3-run streak against the 12-week goal, distance to unlock the estimate — and a
+    threshold HR **lower bound** from sustained efforts that can only raise the zones,
+    needs two agreeing efforts, and never touches the easy ceiling.
 
 ## Inputs still needed from Juan
 
@@ -240,6 +262,16 @@ useful work in the meantime.
   reproducing the defect that motivated it. Advisory, not hard rules: `freePlan` logs
   them rather than throwing, because a property can fail for a defensible reason.
 
+- **2026-09-14 → 2026-10-11, in brief** (commit messages carry the full reasoning):
+  `39a191a` coach replay; the replay found a bug in run-day inference (positional
+  anchors could be unreachable — now rank-weighted membership). `2475686` the long run is
+  held when the week shrinks (it had fallen to 4.6 km against a 5.8 km run nine days
+  earlier). `e9326b5` the recovery haircut scales with how long ago the week was (flat
+  0.8 had been under-prescribing; replay property hits 9 → 3). `bebd78f` sync button +
+  daily cron, neither rewriting the plan. `9968a97` actual intensity from HR streams.
+  `9e8cbd8` milestones and evidence-based threshold; one shared `loadHrProfile`, because
+  three call sites built zones separately. `b556856` the anchor-age guard and the
+  current-shape bound.
 - **The +10% session guardrail binds every run** (2026-09-14, `26e5c51`). The BJSM
   cohort is about a *single* run — any of them — exceeding the longest run of the prior
   30 days by more than 10%. The cap was applied only to the session the template called
@@ -303,6 +335,24 @@ Still open from the original P0 scope, deliberately not built:
 > handoff (measured defects, performance-state model with calibrated CTL bridge,
 > freshness-aware intervals, scenario forecast, tests, runbook). Needs Juan's
 > max-effort/confidence confirmations for the race table (defaults proposed in §3.1).
+>
+> **Second interim fix, 2026-10-11 (`b556856`).** The three guards below all passed and
+> the dashboard published 1:42:19 "estimated today" — anchored on the 2019 Cali 10K,
+> 88 months old (exactly D1). A fourth guard now withholds any estimate whose anchor is
+> older than 180 days, and the live step also computes a **current-shape bound** from
+> recent steady efforts (`deterministic/currentShape.ts`): a steady, non-drifting effort
+> was at or below threshold, so VDOT is *at least* the Daniels VDOT with that threshold
+> pace, giving a time he would run *no slower than*. Oct 1 → VDOT ≥ 35.1, ≤ 2:09:47 on
+> the course. The dashboard shows "≤" and "at most … to close".
+>
+> **What this changes about the order.** P1 as specced still anchors on races, and the
+> newest is from 2022 — it would label the old number stale but could not produce a
+> current one. P1.5 as specced would reject the Oct 1 tempo (87% of max HR vs its 88%
+> guard) and anchor on a hard 5K from 2025-11-23 — before a seven-month layoff, so also
+> stale. **The binding input is now a fresh maximal effort, not code**: a 5K or 20–30 min
+> time trial would give P1.5 a qualifying anchor and close the bound into an estimate.
+> Build P1/P1.5 when that anchor exists, not before. (If the HR-max question resolves
+> lower, the 88% guard moves with it and Oct 1 may already qualify.)
 >
 > **Interim honesty fix shipped 2026-07-19, hardened 2026-08-23:** the symptom of defects
 > D1/D2 (an over-optimistic ~1:48 current-shape estimate off almost no running) is GATED

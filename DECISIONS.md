@@ -90,3 +90,24 @@ Weekly log: what I learned, what I decided, why. 30 min, in English. (PROJECT.md
   because it pushes past what my consistency record supports. Longest streak of 3+ run
   weeks in 78 weeks: eight. The build needs twenty-nine.
 
+## 2026-10-11 — Bounds, not points
+
+- The race estimate unlocked and was immediately wrong: 1:42:19 "estimated today", built
+  on a 2019 10K. Every guard passed, because every guard asked whether recent training
+  was enough to *scale* an anchor, and none asked how old the anchor was. The number I
+  had worked toward for a month was the most misleading one the app has shown.
+- The fix that keeps recurring this month is the same shape: **when the evidence only
+  supports one side, say only that side.** A sustained effort says threshold is *at
+  least* H, never exactly H. A sub-maximal tempo says I would run the race *no slower
+  than* 2:09:47, never "2:09". A gap computed from that is "at most 32:33". Three
+  features, one rule — and each fails safe on bad data instead of flattering me.
+- I let another app's notifications teach me something and also argue me out of
+  something. Asking for feedback at the moment, and celebrating the long run, are right —
+  I answer its prompts and have filed zero check-ins here. "Your threshold improved,
+  you're stronger" from a single run is wrong: it set my threshold to my session's
+  average HR. A first measurement is not an improvement.
+- The specs were right to refuse my Oct 1 tempo as a max-effort anchor. The thing
+  standing between me and a real current-shape estimate is no longer code. It is one
+  honest time trial — and possibly a chest strap telling me my max HR is lower than the
+  wrist has been claiming for a year.
+
