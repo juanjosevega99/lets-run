@@ -657,3 +657,54 @@ describe("buildWeekTemplate — return-to-run and gym calendar", () => {
     expect(gym?.description).not.toContain("cut volume");
   });
 });
+
+describe("buildWeekTemplate — easy running is prescribed by time in every phase", () => {
+  // Juan prefers time on Sunday, and the race is trail — paced by time and effort.
+  // Return-to-run already gave minutes; base dropped back to km the moment the phase
+  // advanced, which is exactly when the plan starts building.
+  const base = (over: Partial<WeekTemplateInput> = {}) =>
+    buildWeekTemplate(
+      baseInput({
+        trainingPhase: "base",
+        limiter: "long_endurance",
+        runDays: [1, 3, 6],
+        previousWeekKm: 18,
+        recentWeeklyKm: [18],
+        longestRunKm30d: 7.12,
+        easyPaceSecPerKm: 447, // 7:27/km, his observed easy pace
+        ...over,
+      }),
+    );
+
+  it("gives the base-phase long run in minutes", () => {
+    const plan = base();
+    expect(plan.key_session.planned_minutes).toBeGreaterThan(0);
+    expect(plan.key_session.description).toMatch(/^\d+ minutes continuous/);
+  });
+
+  it("gives the easy runs in minutes too", () => {
+    for (const s of runningSessions(base())) expect(s.planned_minutes).toBeGreaterThan(0);
+  });
+
+  it("converts at the athlete's own easy pace", () => {
+    const slow = base({ easyPaceSecPerKm: 480 }).key_session;
+    const fast = base({ easyPaceSecPerKm: 420 }).key_session;
+    expect(slow.planned_km).toBe(fast.planned_km);
+    expect(slow.planned_minutes!).toBeGreaterThan(fast.planned_minutes!);
+  });
+
+  it("never prescribes a time that implies passing the session guardrail at that pace", () => {
+    const plan = base();
+    const impliedKm = (plan.key_session.planned_minutes! * 60) / 447;
+    expect(impliedKm).toBeLessThanOrEqual(7.12 * 1.1 + 1e-9);
+  });
+
+  it("gives the long run minutes in a quality week as well", () => {
+    const plan = buildWeekTemplate(
+      baseInput({ trainingPhase: "build", limiter: "threshold", runDays: [0, 2, 4, 6], easyPaceSecPerKm: 447 }),
+    );
+    const long = runningSessions(plan).find((s) => s.title === "Long run")!;
+    expect(long.planned_minutes).toBeGreaterThan(0);
+  });
+});
+

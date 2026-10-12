@@ -184,12 +184,15 @@ function allEasyWeek(
   const keyTitle =
     x.limiter === "long_endurance" ? "Long run (building toward race distance)" : "Long run";
 
+  const easyMinutes = minutesFor(eachEasyKm, x);
+  const keyMinutes = minutesFor(keyKm, x);
   const easy = (day: number): TemplateSession => ({
     day,
     title: "Easy run",
-    description: `${eachEasyKm.toFixed(1)}km easy — ${effort}`,
+    description: `${easyMinutes} minutes easy (about ${eachEasyKm.toFixed(1)}km) — ${effort}`,
     intensity: "low",
     planned_km: eachEasyKm,
+    planned_minutes: easyMinutes,
   });
 
   return {
@@ -197,9 +200,10 @@ function allEasyWeek(
     key_session: {
       day: keyDay,
       title: keyTitle,
-      description: `${keyKm.toFixed(1)}km continuous long run — ${effort} The week's main aerobic stimulus.`,
+      description: `${keyMinutes} minutes continuous (about ${keyKm.toFixed(1)}km) — ${effort} The week's main aerobic stimulus.`,
       intensity: "low",
       planned_km: keyKm,
+      planned_minutes: keyMinutes,
     },
     support_sessions: calendarSupport(easyDays.map(easy), x, keyDay),
   };
@@ -348,9 +352,10 @@ function oneHighDayWeek(
         {
           day: longDay,
           title: "Long run",
-          description: `${longKm.toFixed(1)}km long run — ${effort} Keep it honest even as it gets longer.`,
+          description: `${minutesFor(longKm, x)} minutes long run (about ${longKm.toFixed(1)}km) — ${effort} Keep it honest even as it gets longer.`,
           intensity: "low" as const,
           planned_km: longKm,
+          planned_minutes: minutesFor(longKm, x),
         },
       ],
       x,
@@ -527,6 +532,22 @@ function round1(n: number): number {
 function longRunShare(runDayCount: number): number {
   if (runDayCount <= 0) return LONG_RUN_SHARE_BASE;
   return Math.min(1, Math.max(LONG_RUN_SHARE_BASE, LONG_RUN_MIN_RATIO_TO_EVEN / runDayCount));
+}
+
+/** Easy pace assumed when the athlete's own observed easy pace is unknown. */
+const DEFAULT_EASY_SEC_PER_KM = 450; // 7:30/km
+
+/**
+ * Minutes for an easy session, from the athlete's OWN observed easy pace. Easy running is
+ * prescribed by time in every phase now, not only during return-to-run: time on feet at
+ * conversational effort is the stimulus, pace varies with terrain and fatigue, and a
+ * trail race is paced by time and effort anyway. The km stays alongside as the figure
+ * the session guardrail is enforced in. Rounded DOWN so the time never implies a
+ * distance past the guardrail at the athlete's own pace.
+ */
+function minutesFor(km: number, x: Pick<WeekTemplateInput, "easyPaceSecPerKm">): number {
+  const pace = x.easyPaceSecPerKm != null && x.easyPaceSecPerKm > 0 ? x.easyPaceSecPerKm : DEFAULT_EASY_SEC_PER_KM;
+  return Math.max(1, Math.floor((km * pace) / 60));
 }
 
 /** Rounds DOWN to 1 decimal — used for per-session km so independently-rounded
