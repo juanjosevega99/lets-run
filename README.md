@@ -80,6 +80,11 @@ deploying: the dashboard exposes training data and two POST write endpoints.
    the Strava variables, athlete profile variables, and `DASHBOARD_TZ` for **Production**.
    Preview deployments should use a separate database
    (or be disabled) so a pull request cannot write to production training data.
+4. Also add `CRON_SECRET` (Production) — any long random string from `openssl rand -hex 32` —
+   and **redeploy**, since environment variables only reach new deployments. Check it at
+   `/actions/cron`: `"unauthorized"` means it is set; `"CRON_SECRET is not configured"` means
+   the running deployment cannot see it. The daily cron is also what keeps the Supabase
+   free tier from pausing after a week without activity.
 Vercel's Git integration deploys commits automatically: pull requests receive previews
 and a push to `main` creates the production deployment. The GitHub workflow only runs
 typechecks and tests. The refresh
