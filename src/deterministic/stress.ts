@@ -57,6 +57,16 @@ export interface StressResult {
   method: "trimp" | "pace" | "flat";
 }
 
+/**
+ * Longest strength session counted at face value. A watch left recording after the
+ * gym produced a 1,535-minute (25.6 h) "Weight Training" on 2026-10-30 — it was an
+ * hour. Strength load is duration-based, so one forgotten stop button minted a day's
+ * worth of whole-program fatigue. Real sessions in this history run 40–110 minutes;
+ * two hours keeps every one of them intact and bounds the damage from the next glitch.
+ * The source should still be corrected in Strava — this only stops it poisoning load.
+ */
+export const MAX_STRENGTH_SESSION_MIN = 120;
+
 export function activityStress(
   a: StressInput,
   hr: AthleteHrProfile,
@@ -72,7 +82,7 @@ export function activityStress(
   // lifting is a poor proxy for local muscular load and previously inflated ATL.
   if (isStrength(a.sportType)) {
     const rate = FLAT_RATE_PER_HOUR.find((f) => f.match.test(a.sportType))?.rate ?? FLAT_RATE_DEFAULT;
-    return { stress: (minutes / 60) * rate, method: "flat" };
+    return { stress: (Math.min(minutes, MAX_STRENGTH_SESSION_MIN) / 60) * rate, method: "flat" };
   }
 
   // Aerobic HR load — TRIMP

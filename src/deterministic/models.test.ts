@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { riegelPredict, fitRiegelExponent, RIEGEL_DEFAULT_EXPONENT } from "./riegel.js";
 import { vdotFromRace, predictTimeS, sustainableFraction, trainingPaces } from "./vdot.js";
 import { costOfGrade, gapFactor, courseFactor } from "./minetti.js";
-import { activityStress } from "./stress.js";
+import { activityStress, MAX_STRENGTH_SESSION_MIN } from "./stress.js";
 import { banisterSeries, fillDays } from "./banister.js";
 
 describe("riegel", () => {
@@ -193,3 +193,24 @@ describe("banister", () => {
     expect(days[3]!.runningStress).toBe(50);
   });
 });
+
+describe("activityStress — a forgotten stop button cannot mint a day of fatigue", () => {
+  const hr = { hrMax: 201, hrRest: 55 };
+  const gym = (minutes: number) =>
+    activityStress(
+      { sportType: "WeightTraining", movingTimeS: minutes * 60, elapsedTimeS: minutes * 60, distanceM: 0, avgHr: null },
+      hr,
+      45,
+    ).stress;
+
+  it("counts a real session at face value", () => {
+    expect(gym(60)).toBeCloseTo(2 * gym(30), 5);
+    expect(gym(110)).toBeGreaterThan(gym(60));
+  });
+
+  it("caps the 2026-10-30 artifact — 1,535 minutes recorded for a one-hour session", () => {
+    expect(gym(1535)).toBeCloseTo(gym(MAX_STRENGTH_SESSION_MIN), 5);
+    expect(gym(1535)).toBeLessThan(gym(60) * 2.01);
+  });
+});
+
