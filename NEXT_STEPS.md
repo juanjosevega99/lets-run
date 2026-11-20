@@ -1,6 +1,6 @@
 # Coach v2 — current state and next steps
 
-Updated 2026-10-11 for the Patagonia Running Festival 21K on 2027-04-24.
+Updated 2026-11-20 for the Patagonia Running Festival 21K on 2027-04-24.
 
 > This is the single source of truth for project continuity and priority. Deep
 > implementation details live in `docs/*.md`; they do not maintain a second roadmap.
@@ -26,6 +26,12 @@ ceiling, and pace allowed to be an output rather than a target. Running CTL 7.31
 The binding constraint remains run *frequency*, not run length. The longest streak of
 consecutive weeks with 3+ runs in the last 78 weeks is **8**, ending September 2025; a
 race build needs roughly 29. 44 of those 78 weeks contained any running at all.
+
+**Update 2026-11-20.** Back from a trip. Since mid-October the weeks ran 3 · 3 · 0 · 2 · 1
+runs; easy pace is at its best (7:04/km at HR 143), long run 7.38 km (Nov 1, ages out of
+the 30-day window on Dec 1). Supabase paused three times before the nightly cron was
+actually running — `CRON_SECRET` reached production on Nov 1 and the outages stopped.
+New goal below.
 
 **Update 2026-10-11.** Running CTL 13.5. Training has turned social: hard sessions
 happen with friends (a tempo Oct 1, intervals Oct 3 and Oct 6), the long run happens, and
@@ -63,35 +69,58 @@ The correct phase is therefore **return to running**, not a normal base/build we
 - Progress only after the key session and most of the week are completed without a red
   flag. A missed key session repeats the focus; whole-program overload deloads it.
 
-### Where the goal actually stands (assessed 2026-09-14)
+### The goal (set 2026-11-20, replaces the 2026-09-14 re-anchor)
 
-**Running 1:37:14 and winning the bracket are different questions with different
-answers, and conflating them is the biggest strategic error in the plan.**
+**Where it stands.** 22 weeks out. Easy pace is the best it has been (7:04/km at HR 143
+on Nov 9, against 7:44 in early September), but consistency has not held: since
+mid-October the weeks ran 3 · 3 · 0 · 2 · 1 runs. Every zero week erases most of what the
+good weeks built, and the trajectory model reads "unreachable" against its 53 km/week
+peak. The race is fine; the 1:37:14 plan is not.
 
-1:37:14 on a 250m-gain trail course is ~4:36/km, against a 4:39/km road PB from 2022 — it
-asks the athlete to be faster than he has ever been, five years later, on harder terrain.
-Current easy pace is 7:44/km at HR 143, against 6:30/km at the same HR twelve months ago.
-Combined with the consistency record above, the honest read is **unlikely**.
+**Winning and 1:37:14 are different questions.** The 2026 bracket went 1:37:14, then
+**1:59:08**, then 2:00:15. The winner was an outlier (2nd overall); the bracket's real
+standard is near two hours. 1:37:14 on this course (~4:36/km) is faster than the
+athlete's 2022 road PB, five years on, on trail.
 
-Winning the bracket is a genuinely different proposition. The 2026 results: 1st 1:37:14,
-**2nd 1:59:08**, 3rd 2:00:15. A 22-minute gap means the 2026 winner was an outlier (2nd
-overall) who happened to be 18-29; the bracket's real standard is closer to 1:59. Sub-1:50
-probably wins in a normal year, and sub-1:55 podiums.
+**Weekly commitment — the goal that decides everything else:**
 
-The target was set to the 2026 winner's time on the assumption that is what winning costs.
-It is not — it is the hardest number in the table. Chasing it is also the *riskier* path
-to winning, because it pushes training beyond what the consistency record supports, which
-is exactly how the previous three blocks ended.
+| | |
+|---|---|
+| Floor, every week | **4 runs.** Travel weeks: 2. **Never zero.** |
+| December target | **5 runs**, all easy |
+| Strides | from the 4th consecutive week at the floor |
+| Long run | 45 min (Nov 22) → 55 → 60, ~75 min by end of December, ~90 by February |
 
-Recommended re-anchor: primary goal **12 consecutive weeks of 3+ runs** (never yet
-achieved, and the only variable that matters now); A-goal **sub-1:48**; 1:37:14 retained
-as a stretch to be re-evaluated on evidence, not retired. Checkpoints: 15km continuous by
-mid-December, a 10K time trial in early February (sub-44:00 keeps 1:37 alive), and an
-18-21km trail long run with race-like vert in mid-March.
+The floor was raised from 3 to 4 at the athlete's request — he wants more than the
+minimum. Risk accepted knowingly: frequency jumps load tendons and calves even at easy
+pace, so the runs stay short and easy and the long run grows by time, ~10% a week.
 
-**Unverified input that moves all of this:** the 250m course gain is an assumption in
-`predict/live.ts`. If Huemul is 600m+, every pace target above shifts and trail-specific
-work matters far more than flat-road fitness.
+**Race target, tiered — the number is chosen from evidence, not hope:**
+
+| | on the Huemul course | roughly means |
+|---|---|---|
+| Stretch | **1:45** | back past September 2025 fitness (12 km at ~5:00/km in training) |
+| A-goal | **1:50** | a consistent winter at 4–5 runs a week |
+| Floor | **under 2:00** | ahead of last year's 2nd place in the bracket |
+
+1:37:14 is retired as the planning target. It is reopened only if the February 10K comes
+in under ~44:00.
+
+**Checkpoints:**
+
+- **~Dec 19 — 5K time trial**, fresh, with the chest strap. Turns the dashboard's
+  "≤ 2:09:47" bound into a real estimate and picks the tier above. It also tests the
+  HR max of 201, which every zone derives from and which may be a wrist artifact.
+- **Early February — 10K time trial.** Second point, so the trend shows, not one snapshot.
+- **Mid-March — 18–21 km trail long run** with race-like vert.
+
+`src/lib/race.ts` still carries `targetTimeS: 5834` (1:37:14), which drives the
+dashboard's "Winning target" and every "gap to close". Change it after the December time
+trial picks the tier, not before.
+
+**Unverified input that moves all of this:** the 250 m course gain is an assumption in
+`predict/live.ts`. If Huemul is 600 m+, every pace above shifts and trail-specific work
+matters far more than flat-road fitness.
 
 ## What Coach v2 now does
 
